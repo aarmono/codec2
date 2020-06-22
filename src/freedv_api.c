@@ -1050,17 +1050,36 @@ void freedv_set_eq(struct freedv *f, int val) {
     }
 }
 
-void freedv_set_crypto(struct freedv *f, const unsigned char key[], const unsigned char iv[]) {
-    if (f->aes_module != NULL) {
-        FREE(f->aes_module);
-        f->aes_module = NULL;
-    }
+/*---------------------------------------------------------------------------* \
 
-    if (key != NULL && iv != NULL) {
-        f->aes_module = (struct freedv_crypto*)CALLOC(1, sizeof(struct freedv_crypto));
+  FUNCTION....: freedv_set_crypto
+  DATE CREATED: 21 June 2020
+
+  Configures the encrypted voice option.
+  If key is not NULL, the encryption option is configured to use the new key
+  and IV. iv cannot be NULL if key is not NULL
+  If key is NULL and iv is not NULL, the IV is reset with the existing key
+  If both key and iv are NULL, encryption is disabled
+
+  Both key and iv are 16 bytes
+
+\*---------------------------------------------------------------------------*/
+void freedv_set_crypto(struct freedv *f, const unsigned char key[], const unsigned char iv[]) {
+    if (key != NULL) {
+        assert(iv != NULL);
+        if (f->aes_module == NULL) {
+            f->aes_module = (struct freedv_crypto*)CALLOC(1, sizeof(struct freedv_crypto));
+        }
+
         AES_init_ctx(&f->aes_module->aes_ctx, key);
         memcpy(f->aes_module->tx_iv, iv, sizeof(f->aes_module->tx_iv));
-        memcpy(f->aes_module->rx_iv, iv, sizeof(f->aes_module->rx_iv));
+    }
+    else if (iv != NULL) {
+        memcpy(f->aes_module->tx_iv, iv, sizeof(f->aes_module->tx_iv));
+    }
+    else {
+        FREE(f->aes_module);
+        f->aes_module = NULL;
     }
 }
 
