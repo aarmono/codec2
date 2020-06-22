@@ -145,6 +145,7 @@ add_custom_command(
 #
 
 set(CODEC2_SRCS
+    aes.c
     dump.c
     lpc.c
     nlp.c

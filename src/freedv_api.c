@@ -1050,6 +1050,20 @@ void freedv_set_eq(struct freedv *f, int val) {
     }
 }
 
+void freedv_set_crypto(struct freedv *f, const unsigned char key[], const unsigned char iv[]) {
+    if (f->aes_module != NULL) {
+        FREE(f->aes_module);
+        f->aes_module = NULL;
+    }
+
+    if (key != NULL && iv != NULL) {
+        f->aes_module = (struct freedv_crypto*)CALLOC(1, sizeof(struct freedv_crypto));
+        AES_init_ctx(&f->aes_module->aes_ctx, key);
+        memcpy(f->aes_module->tx_iv, iv, sizeof(f->aes_module->tx_iv));
+        memcpy(f->aes_module->rx_iv, iv, sizeof(f->aes_module->rx_iv));
+    }
+}
+
 void freedv_set_verbose(struct freedv *f, int verbosity) {
     f->verbose = verbosity;
     if (FDV_MODE_ACTIVE( FREEDV_MODE_700C, f->mode)) {

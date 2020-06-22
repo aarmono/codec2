@@ -41,6 +41,9 @@
 #include "freedv_api.h"
 #include "modem_stats.h"
 
+static const unsigned char key[16] = { 0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c };
+static unsigned char iv[16];
+
 #define NDISCARD 5                /* BER measure optionally discards first few frames after sync */
 
 int main(int argc, char *argv[]) {
@@ -137,6 +140,12 @@ int main(int argc, char *argv[]) {
     
     freedv_set_test_frames(freedv, use_testframes);
     freedv_set_verbose(freedv, verbose);
+
+    FILE* f = fopen("/dev/urandom", "rb");
+    fread(iv, sizeof(iv), 1, f);
+    fclose(f);
+
+    freedv_set_crypto(freedv, key, iv);
 
     if (use_squelch) {
         freedv_set_snr_squelch_thresh(freedv, squelch);

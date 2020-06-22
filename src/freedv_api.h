@@ -174,7 +174,7 @@ void freedv_set_dpsk                    (struct freedv *freedv, int val);
 void freedv_set_ext_vco                 (struct freedv *f, int val);
 void freedv_set_phase_est_bandwidth_mode(struct freedv *f, int val);
 void freedv_set_eq                      (struct freedv *f, int val);
-      
+void freedv_set_crypto                  (struct freedv *f, const unsigned char key[], const unsigned char iv[]);
 // Get parameters -------------------------------------------------------------------------
 
 

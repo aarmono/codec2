@@ -33,6 +33,9 @@
 
 #include "freedv_api.h"
 
+static const unsigned char key[16] = { 0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c };
+static unsigned char iv[16];
+
 int main(int argc, char *argv[]) {
     FILE                     *fin, *fout;
     struct freedv            *freedv;
@@ -112,6 +115,12 @@ int main(int argc, char *argv[]) {
     freedv_set_tx_bpf(freedv, use_txbpf);
     freedv_set_dpsk(freedv, use_dpsk);
     freedv_set_verbose(freedv, 1);
+
+    FILE* f = fopen("/dev/urandom", "rb");
+    fread(iv, sizeof(iv), 1, f);
+    fclose(f);
+
+    freedv_set_crypto(freedv, key, iv);
 
     /* handy functions to set buffer sizes, note tx/modulator always
        returns freedv_get_n_nom_modem_samples() (unlike rx side) */

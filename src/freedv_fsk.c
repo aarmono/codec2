@@ -26,6 +26,8 @@
 #include "comp_prim.h"
 #include "debug_alloc.h"
 
+#include "aes.h"
+
 void freedv_2400a_open(struct freedv *f) {
     f->n_protocol_bits = 20;
     f->deframer = fvhff_create_deframer(FREEDV_VHF_FRAME_A,0);
@@ -140,6 +142,28 @@ void freedv_tx_fsk_voice(struct freedv *f, short mod_out[]) {
                     f->varicode_bit_index = 0;
                 }
             }
+        }
+
+        if (f->aes_module != NULL) {
+            int n_packed_bytes = (f->bits_per_modem_frame + 7)/8;
+            int iv_bytes_save = f->bits_per_modem_frame/8;
+
+            /* Save the initialization vector to a temporary to sychronize the stream */
+            uint8_t tmp[sizeof(f->aes_module->tx_iv)];
+            memcpy(tmp, f->aes_module->tx_iv, sizeof(f->aes_module->tx_iv));
+
+            /* AES-CFB mode: encrypt the IV, then XOR the result with the plaintext
+               to obtain ciphertext */
+            AES_ECB_encrypt(&f->aes_module->aes_ctx, tmp);
+            for (i=0;i<n_packed_bytes;i++) {
+                f->tx_payload_bits[i] ^= tmp[i];
+            }
+
+            /* Shift part of the ciphertext into the IV */
+            memmove(f->aes_module->tx_iv + iv_bytes_save,
+                    f->aes_module->tx_iv,
+                    sizeof(f->aes_module->tx_iv) - iv_bytes_save);
+            memcpy(f->aes_module->tx_iv, f->tx_payload_bits, iv_bytes_save);
         }
 
         /* If the API user hasn't set up message callbacks, don't bother with varicode bits */
@@ -319,7 +343,35 @@ int freedv_comprx_fsk(struct freedv *f, COMP demod_in[]) {
         if( f->freedv_put_next_proto != NULL){
             (*f->freedv_put_next_proto)(f->proto_callback_state,(char*)proto_bits);
         }
+
+        if(f->aes_module != NULL) {
+            int n_packed_bytes = (f->bits_per_modem_frame + 7)/8;
+            int iv_bytes_save = f->bits_per_modem_frame/8;
+            uint8_t tmp1[n_packed_bytes];
+            uint8_t tmp2[sizeof(f->aes_module->rx_iv)];
+
+            /* Save off the current IV for shifting */
+            memcpy(tmp2, f->aes_module->rx_iv, sizeof(f->aes_module->rx_iv));
+
+            /* AES-CFB mode: encrypt the IV, then XOR the result with the ciphertext
+               to obtain plaintext */
+            AES_ECB_encrypt(&f->aes_module->aes_ctx, tmp2);
+            for (i=0;i<n_packed_bytes;i++) {
+                /* Write the decrypted bytes to a temporary to shift the encrypted
+                   bytes into the IV */
+                tmp1[i] = f->rx_payload_bits[i] ^ tmp2[i];
+            }
+
+            /* Shift part of the ciphertext into the IV */
+            memmove(f->aes_module->rx_iv + iv_bytes_save,
+                    f->aes_module->rx_iv,
+                    sizeof(f->aes_module->rx_iv) - iv_bytes_save);
+            memcpy(f->aes_module->rx_iv, f->rx_payload_bits, iv_bytes_save);
+
+            memcpy(f->rx_payload_bits, tmp1, n_packed_bytes);
+        }
     } 
+
     f->sync = f->deframer->state;
     f->stats.sync = f->deframer->state;
 
