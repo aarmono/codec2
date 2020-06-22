@@ -347,20 +347,10 @@ int freedv_comprx_fsk(struct freedv *f, COMP demod_in[]) {
         if(f->aes_module != NULL) {
             int n_packed_bytes = (f->bits_per_modem_frame + 7)/8;
             int iv_bytes_save = f->bits_per_modem_frame/8;
-            uint8_t tmp1[n_packed_bytes];
-            uint8_t tmp2[sizeof(f->aes_module->rx_iv)];
+            uint8_t tmp[sizeof(f->aes_module->rx_iv)];
 
             /* Save off the current IV for shifting */
-            memcpy(tmp2, f->aes_module->rx_iv, sizeof(f->aes_module->rx_iv));
-
-            /* AES-CFB mode: encrypt the IV, then XOR the result with the ciphertext
-               to obtain plaintext */
-            AES_ECB_encrypt(&f->aes_module->aes_ctx, tmp2);
-            for (i=0;i<n_packed_bytes;i++) {
-                /* Write the decrypted bytes to a temporary to shift the encrypted
-                   bytes into the IV */
-                tmp1[i] = f->rx_payload_bits[i] ^ tmp2[i];
-            }
+            memcpy(tmp, f->aes_module->rx_iv, sizeof(f->aes_module->rx_iv));
 
             /* Shift part of the ciphertext into the IV */
             memmove(f->aes_module->rx_iv + iv_bytes_save,
@@ -368,7 +358,13 @@ int freedv_comprx_fsk(struct freedv *f, COMP demod_in[]) {
                     sizeof(f->aes_module->rx_iv) - iv_bytes_save);
             memcpy(f->aes_module->rx_iv, f->rx_payload_bits, iv_bytes_save);
 
-            memcpy(f->rx_payload_bits, tmp1, n_packed_bytes);
+            /* AES-CFB mode: encrypt the IV, then XOR the result with the ciphertext
+               to obtain plaintext */
+            AES_ECB_encrypt(&f->aes_module->aes_ctx, tmp);
+            for (i=0;i<n_packed_bytes;i++) {
+                /* Write the decrypted bytes */
+                f->rx_payload_bits[i] ^=  tmp[i];
+            }
         }
     } 
 
