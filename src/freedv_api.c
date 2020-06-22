@@ -1061,7 +1061,7 @@ void freedv_set_eq(struct freedv *f, int val) {
   If key is NULL and iv is not NULL, the IV is reset with the existing key
   If both key and iv are NULL, encryption is disabled
 
-  Both key and iv are 16 bytes
+  Key is 32 bytes, IV is 16 bytes
 
 \*---------------------------------------------------------------------------*/
 void freedv_set_crypto(struct freedv *f, const unsigned char key[], const unsigned char iv[]) {
