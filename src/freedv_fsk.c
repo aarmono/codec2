@@ -145,25 +145,7 @@ void freedv_tx_fsk_voice(struct freedv *f, short mod_out[]) {
         }
 
         if (f->aes_module != NULL) {
-            int n_packed_bytes = (f->bits_per_modem_frame + 7)/8;
-            int iv_bytes_save = f->bits_per_modem_frame/8;
-
-            /* Save the initialization vector to a temporary to sychronize the stream */
-            uint8_t tmp[sizeof(f->aes_module->tx_iv)];
-            memcpy(tmp, f->aes_module->tx_iv, sizeof(f->aes_module->tx_iv));
-
-            /* AES-CFB mode: encrypt the IV, then XOR the result with the plaintext
-               to obtain ciphertext */
-            AES_ECB_encrypt(&f->aes_module->aes_ctx, tmp);
-            for (i=0;i<n_packed_bytes;i++) {
-                f->tx_payload_bits[i] ^= tmp[i];
-            }
-
-            /* Shift part of the ciphertext into the IV */
-            memmove(f->aes_module->tx_iv + iv_bytes_save,
-                    f->aes_module->tx_iv,
-                    sizeof(f->aes_module->tx_iv) - iv_bytes_save);
-            memcpy(f->aes_module->tx_iv, f->tx_payload_bits, iv_bytes_save);
+            freedv_encrypt(f->aes_module, f->tx_payload_bits, f->bits_per_modem_frame);
         }
 
         /* If the API user hasn't set up message callbacks, don't bother with varicode bits */
@@ -345,26 +327,7 @@ int freedv_comprx_fsk(struct freedv *f, COMP demod_in[]) {
         }
 
         if(f->aes_module != NULL) {
-            int n_packed_bytes = (f->bits_per_modem_frame + 7)/8;
-            int iv_bytes_save = f->bits_per_modem_frame/8;
-            uint8_t tmp[sizeof(f->aes_module->rx_iv)];
-
-            /* Save off the current IV for shifting */
-            memcpy(tmp, f->aes_module->rx_iv, sizeof(f->aes_module->rx_iv));
-
-            /* Shift part of the ciphertext into the IV */
-            memmove(f->aes_module->rx_iv + iv_bytes_save,
-                    f->aes_module->rx_iv,
-                    sizeof(f->aes_module->rx_iv) - iv_bytes_save);
-            memcpy(f->aes_module->rx_iv, f->rx_payload_bits, iv_bytes_save);
-
-            /* AES-CFB mode: encrypt the IV, then XOR the result with the ciphertext
-               to obtain plaintext */
-            AES_ECB_encrypt(&f->aes_module->aes_ctx, tmp);
-            for (i=0;i<n_packed_bytes;i++) {
-                /* Write the decrypted bytes */
-                f->rx_payload_bits[i] ^=  tmp[i];
-            }
+            freedv_decrypt(f->aes_module, f->rx_payload_bits, f->bits_per_modem_frame);
         }
     } 
 
@@ -389,4 +352,49 @@ int freedv_floatrx(struct freedv *f, short speech_out[], float demod_in[]) {
     }
 
     return freedv_comprx(f, speech_out, rx_fdm);
+}
+
+void freedv_encrypt(struct freedv_crypto* c, uint8_t frame[], int bits_per_frame)
+{
+    int i;
+    int n_packed_bytes = (bits_per_frame + 7)/8;
+    int iv_bytes_save = bits_per_frame/8;
+
+    /* Save the initialization vector to a temporary to sychronize the stream */
+    uint8_t tmp[sizeof(c->tx_iv)];
+    memcpy(tmp, c->tx_iv, sizeof(c->tx_iv));
+
+    /* AES-CFB mode: encrypt the IV, then XOR the result with the plaintext
+       to obtain ciphertext */
+    AES_ECB_encrypt(&c->aes_ctx, tmp);
+    for (i=0;i<n_packed_bytes;i++) {
+        frame[i] ^= tmp[i];
+    }
+
+    /* Shift part of the ciphertext into the IV */
+    memmove(c->tx_iv + iv_bytes_save, c->tx_iv, sizeof(c->tx_iv) - iv_bytes_save);
+    memcpy(c->tx_iv, frame, iv_bytes_save);
+}
+
+void freedv_decrypt(struct freedv_crypto* c, uint8_t frame[], int bits_per_frame)
+{
+    int i;
+    int n_packed_bytes = (bits_per_frame + 7)/8;
+    int iv_bytes_save = bits_per_frame/8;
+    uint8_t tmp[sizeof(c->rx_iv)];
+
+    /* Save off the current IV for shifting */
+    memcpy(tmp, c->rx_iv, sizeof(c->rx_iv));
+
+    /* Shift part of the ciphertext into the IV */
+    memmove(c->rx_iv + iv_bytes_save, c->rx_iv, sizeof(c->rx_iv) - iv_bytes_save);
+    memcpy(c->rx_iv, frame, iv_bytes_save);
+
+    /* AES-CFB mode: encrypt the IV, then XOR the result with the ciphertext
+       to obtain plaintext */
+    AES_ECB_encrypt(&c->aes_ctx, tmp);
+    for (i=0;i<n_packed_bytes;i++) {
+        /* Write the decrypted bytes */
+        frame[i] ^=  tmp[i];
+    }
 }

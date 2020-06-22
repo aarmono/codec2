@@ -220,6 +220,9 @@ int freedv_comprx_fsk(struct freedv *f, COMP demod_in[]);
 int freedv_floatrx(struct freedv *f, short speech_out[], float demod_in[]);
       
 int freedv_bits_to_speech(struct freedv *f, short speech_out[], short demod_in[], int rx_status);
+
+void freedv_encrypt(struct freedv_crypto* c, uint8_t frame[], int bits_per_frame);
+void freedv_decrypt(struct freedv_crypto* c, uint8_t frame[], int bits_per_frame);
       
 #ifdef __cplusplus
 }
