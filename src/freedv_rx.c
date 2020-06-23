@@ -37,15 +37,46 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
+#include <arpa/inet.h>
 
 #include "freedv_api.h"
 #include "modem_stats.h"
+#include "aes.h"
 
 static const unsigned char key[] = { 0x60, 0x3d, 0xeb, 0x10, 0x15, 0xca, 0x71, 0xbe, 0x2b, 0x73, 0xae, 0xf0, 0x85, 0x7d, 0x77, 0x81,
                                      0x1f, 0x35, 0x2c, 0x07, 0x3b, 0x61, 0x08, 0xd7, 0x2d, 0x98, 0x10, 0xa3, 0x09, 0x14, 0xdf, 0xf4 };
 static unsigned char iv[16];
 
 #define NDISCARD 5                /* BER measure optionally discards first few frames after sync */
+
+static void rotate_key(const unsigned char master_key[], unsigned char derived_key[])
+{
+    struct tm utc_time;
+    time_t local_time = time( NULL );
+    gmtime_r(&local_time, &utc_time);
+
+    const uint32_t year = htonl((uint32_t)utc_time.tm_year);
+    const uint32_t month = htonl((uint32_t)utc_time.tm_mon);
+    const uint32_t day = htonl((uint32_t)utc_time.tm_mday);
+
+    memset(derived_key, 0, AES_KEYLEN);
+
+    memcpy(derived_key,     &year, sizeof(year));
+    memcpy(derived_key + 4, &month, sizeof(month));
+    memcpy(derived_key + 8, &day, sizeof(day));
+
+    memcpy(derived_key + AES_BLOCKLEN,     &year, sizeof(year));
+    memcpy(derived_key + AES_BLOCKLEN + 4, &month, sizeof(month));
+    memcpy(derived_key + AES_BLOCKLEN + 8, &day, sizeof(day));
+    derived_key[AES_BLOCKLEN + 12] = 1;
+
+    struct AES_ctx ctx;
+    AES_init_ctx(&ctx, master_key);
+
+    AES_ECB_encrypt(&ctx, derived_key);
+    AES_ECB_encrypt(&ctx, derived_key + AES_BLOCKLEN);
+}
 
 int main(int argc, char *argv[]) {
     FILE                      *fin, *fout;
@@ -146,7 +177,10 @@ int main(int argc, char *argv[]) {
     fread(iv, sizeof(iv), 1, f);
     fclose(f);
 
-    freedv_set_crypto(freedv, key, iv);
+    unsigned char session_key[AES_KEYLEN];
+    rotate_key(key, session_key);
+
+    freedv_set_crypto(freedv, session_key, iv);
 
     if (use_squelch) {
         freedv_set_snr_squelch_thresh(freedv, squelch);
