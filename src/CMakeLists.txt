@@ -283,10 +283,10 @@ target_link_libraries(fdmdv_channel ${CMAKE_REQUIRED_LIBRARIES} codec2)
 add_executable(insert_errors insert_errors.c)
 target_link_libraries(insert_errors ${CMAKE_REQUIRED_LIBRARIES})
 
-add_executable(freedv_tx freedv_tx.c)
+add_executable(freedv_tx freedv_tx.c sha256.c hmac-sha256.c)
 target_link_libraries(freedv_tx ${CMAKE_REQUIRED_LIBRARIES} codec2)
 
-add_executable(freedv_rx freedv_rx.c)
+add_executable(freedv_rx freedv_rx.c sha256.c hmac-sha256.c)
 target_link_libraries(freedv_rx ${CMAKE_REQUIRED_LIBRARIES} codec2)
 
 add_executable(freedv_data_raw_tx freedv_data_raw_tx.c)

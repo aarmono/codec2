@@ -35,38 +35,25 @@
 #include <arpa/inet.h>
 
 #include "freedv_api.h"
-#include "aes.h"
+#include "hmac-sha256.h"
 
 static const unsigned char key[] = { 0x60, 0x3d, 0xeb, 0x10, 0x15, 0xca, 0x71, 0xbe, 0x2b, 0x73, 0xae, 0xf0, 0x85, 0x7d, 0x77, 0x81,
                                      0x1f, 0x35, 0x2c, 0x07, 0x3b, 0x61, 0x08, 0xd7, 0x2d, 0x98, 0x10, 0xa3, 0x09, 0x14, 0xdf, 0xf4 };
 static unsigned char iv[16];
 
-static void rotate_key(const unsigned char master_key[], unsigned char derived_key[])
+static void rotate_key(const unsigned char master_key[],
+                       uint32_t            master_key_size,
+                       unsigned char       derived_key[])
 {
     struct tm utc_time;
     time_t local_time = time( NULL );
     gmtime_r(&local_time, &utc_time);
 
-    const uint32_t year = htonl((uint32_t)utc_time.tm_year);
-    const uint32_t month = htonl((uint32_t)utc_time.tm_mon);
-    const uint32_t day = htonl((uint32_t)utc_time.tm_mday);
+    const uint32_t counter = htonl( (((uint32_t)utc_time.tm_year) << 9) |
+                                    (((uint32_t)utc_time.tm_mon)  << 5) |
+                                    (((uint32_t)utc_time.tm_mday) << 0) );
 
-    memset(derived_key, 0, AES_KEYLEN);
-
-    memcpy(derived_key,     &year, sizeof(year));
-    memcpy(derived_key + 4, &month, sizeof(month));
-    memcpy(derived_key + 8, &day, sizeof(day));
-
-    memcpy(derived_key + AES_BLOCKLEN,     &year, sizeof(year));
-    memcpy(derived_key + AES_BLOCKLEN + 4, &month, sizeof(month));
-    memcpy(derived_key + AES_BLOCKLEN + 8, &day, sizeof(day));
-    derived_key[AES_BLOCKLEN + 12] = 1;
-
-    struct AES_ctx ctx;
-    AES_init_ctx(&ctx, master_key);
-
-    AES_ECB_encrypt(&ctx, derived_key);
-    AES_ECB_encrypt(&ctx, derived_key + AES_BLOCKLEN);
+    hmac_sha256(derived_key, (const uint8_t*)&counter, sizeof(counter), master_key, master_key_size);
 }
 
 int main(int argc, char *argv[]) {
@@ -153,8 +140,8 @@ int main(int argc, char *argv[]) {
     fread(iv, sizeof(iv), 1, f);
     fclose(f);
 
-    unsigned char session_key[AES_KEYLEN];
-    rotate_key(key, session_key);
+    unsigned char session_key[HMAC_SHA256_DIGEST_SIZE];
+    rotate_key(key, sizeof(key), session_key);
     freedv_set_crypto(freedv, session_key, iv);
 
     /* handy functions to set buffer sizes, note tx/modulator always
