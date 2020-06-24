@@ -39,19 +39,25 @@
 
 static const unsigned char key[] = { 0x60, 0x3d, 0xeb, 0x10, 0x15, 0xca, 0x71, 0xbe, 0x2b, 0x73, 0xae, 0xf0, 0x85, 0x7d, 0x77, 0x81,
                                      0x1f, 0x35, 0x2c, 0x07, 0x3b, 0x61, 0x08, 0xd7, 0x2d, 0x98, 0x10, 0xa3, 0x09, 0x14, 0xdf, 0xf4 };
-static unsigned char iv[16];
 
-static void rotate_key(const unsigned char master_key[],
-                       uint32_t            master_key_size,
-                       unsigned char       derived_key[])
+static uint32_t get_key_counter()
 {
     struct tm utc_time;
     time_t local_time = time( NULL );
     gmtime_r(&local_time, &utc_time);
 
-    const uint32_t counter = htonl( (((uint32_t)utc_time.tm_year) << 9) |
-                                    (((uint32_t)utc_time.tm_mon)  << 5) |
-                                    (((uint32_t)utc_time.tm_mday) << 0) );
+    return (((uint32_t)utc_time.tm_year) << 21) |
+           (((uint32_t)utc_time.tm_mon)  << 17) |
+           (((uint32_t)utc_time.tm_mday) << 12) |
+           (((uint32_t)utc_time.tm_hour) <<  6) ; /* Placeholder for minutes */
+}
+
+static void rotate_key(const unsigned char master_key[],
+                       uint32_t            master_key_size,
+                       uint32_t            counter,
+                       unsigned char       derived_key[])
+{
+    counter = htonl(counter);
 
     hmac_sha256(derived_key, (const uint8_t*)&counter, sizeof(counter), master_key, master_key_size);
 }
@@ -136,14 +142,6 @@ int main(int argc, char *argv[]) {
     freedv_set_dpsk(freedv, use_dpsk);
     freedv_set_verbose(freedv, 1);
 
-    FILE* f = fopen("/dev/urandom", "rb");
-    fread(iv, sizeof(iv), 1, f);
-    fclose(f);
-
-    unsigned char session_key[HMAC_SHA256_DIGEST_SIZE];
-    rotate_key(key, sizeof(key), session_key);
-    freedv_set_crypto(freedv, session_key, iv);
-
     /* handy functions to set buffer sizes, note tx/modulator always
        returns freedv_get_n_nom_modem_samples() (unlike rx side) */
     int n_speech_samples = freedv_get_n_speech_samples(freedv);
@@ -152,8 +150,24 @@ int main(int argc, char *argv[]) {
     short mod_out[n_nom_modem_samples];
 
     /* OK main loop  --------------------------------------- */
-
+    uint32_t prev_counter = 0;
+    FILE* urandom = fopen("/dev/urandom", "rb");
     while(fread(speech_in, sizeof(short), n_speech_samples, fin) == n_speech_samples) {
+
+        uint32_t cur_counter = get_key_counter();
+        if (cur_counter != prev_counter) {
+            unsigned char iv[16];
+
+            fread(iv, sizeof(iv), 1, urandom);
+
+            unsigned char session_key[HMAC_SHA256_DIGEST_SIZE];
+            rotate_key(key, sizeof(key), cur_counter, session_key);
+
+            freedv_set_crypto(freedv, session_key, iv);
+
+            prev_counter = cur_counter;
+        }
+
         freedv_tx(freedv, mod_out, speech_in);
         fwrite(mod_out, sizeof(short), n_nom_modem_samples, fout);
     
@@ -163,6 +177,7 @@ int main(int argc, char *argv[]) {
     }
     
     freedv_close(freedv);
+    fclose(urandom);
     fclose(fin);
     fclose(fout);
     
