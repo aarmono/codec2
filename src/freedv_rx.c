@@ -208,7 +208,6 @@ int main(int argc, char *argv[]) {
 	/* if using pipes we probably don't want the usual buffering
            to occur */
         if (fout == stdout) fflush(stdout);
-        if (fin == stdin) fflush(stdin);
     }
 
     fclose(fin);
