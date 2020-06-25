@@ -27,7 +27,7 @@
 #include "debug_alloc.h"
 
 #include "aes.h"
-#include "hmac-sha256.h"
+#include "fips202.h"
 
 void freedv_2400a_open(struct freedv *f) {
     f->n_protocol_bits = 20;
@@ -366,8 +366,13 @@ void freedv_encrypt(struct freedv_crypto* c, uint8_t frame[], int bits_per_frame
     memcpy(cur_iv, c->tx_iv, sizeof(c->tx_iv));
 
     uint8_t block_key[AES_KEYLEN];
+    uint8_t kmac256_temp[SHAKE256_RATE+sizeof(cur_iv)+3];
     /* Hash the IV with the master key to obtain a block key */
-    hmac_sha256(block_key, cur_iv, sizeof(cur_iv), c->master_key, sizeof(c->master_key));
+    kmac256_simple(block_key, sizeof(block_key),
+                   0xF,
+                   cur_iv, sizeof(cur_iv),
+                   c->master_key, sizeof(c->master_key),
+                   kmac256_temp);
 
     /* Initialize encryptor with the block key */
     struct AES_ctx aes_ctx;
@@ -396,8 +401,13 @@ void freedv_decrypt(struct freedv_crypto* c, uint8_t frame[], int bits_per_frame
     memcpy(cur_iv, c->rx_iv, sizeof(c->rx_iv));
 
     uint8_t block_key[AES_KEYLEN];
+    uint8_t kmac256_temp[SHAKE256_RATE+sizeof(cur_iv)+3];
     /* Hash the IV with the master key to obtain a block key */
-    hmac_sha256(block_key, cur_iv, sizeof(cur_iv), c->master_key, sizeof(c->master_key));
+    kmac256_simple(block_key, sizeof(block_key),
+                   0xF,
+                   cur_iv, sizeof(cur_iv),
+                   c->master_key, sizeof(c->master_key),
+                   kmac256_temp);
 
     /* Shift part of the ciphertext into the IV */
     memmove(c->rx_iv + iv_bytes_save, c->rx_iv, sizeof(c->rx_iv) - iv_bytes_save);

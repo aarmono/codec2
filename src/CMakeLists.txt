@@ -146,8 +146,7 @@ add_custom_command(
 
 set(CODEC2_SRCS
     aes.c
-    sha256.c
-    hmac-sha256.c
+    fips202.c
     dump.c
     lpc.c
     nlp.c
