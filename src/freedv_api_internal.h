@@ -66,9 +66,9 @@
 extern char *rx_sync_flags_to_text[]; // converts flags above to more meaningful text
 
 struct freedv_crypto {
-    struct  AES_ctx aes_ctx;             // shared AES context for encryption/decryption
-    uint8_t         tx_iv[AES_BLOCKLEN]; // AES initialization vector used to encrypt frames
-    uint8_t         rx_iv[AES_BLOCKLEN]; // AES initialization vector used to decrypt frames
+    uint8_t master_key[AES_KEYLEN]; // "master" key used to generate block keys
+    uint8_t tx_iv[AES_BLOCKLEN];    // AES initialization vector used to encrypt frames
+    uint8_t rx_iv[AES_BLOCKLEN];    // AES initialization vector used to decrypt frames
 };
 
 struct freedv {

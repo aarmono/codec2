@@ -1071,7 +1071,7 @@ void freedv_set_crypto(struct freedv *f, const unsigned char key[], const unsign
             f->aes_module = (struct freedv_crypto*)CALLOC(1, sizeof(struct freedv_crypto));
         }
 
-        AES_init_ctx(&f->aes_module->aes_ctx, key);
+        memcpy(f->aes_module->master_key, key, sizeof(f->aes_module->master_key));
         memcpy(f->aes_module->tx_iv, iv, sizeof(f->aes_module->tx_iv));
     }
     else if (iv != NULL) {

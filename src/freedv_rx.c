@@ -37,8 +37,6 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <time.h>
-#include <arpa/inet.h>
 
 #include "freedv_api.h"
 #include "modem_stats.h"
@@ -46,47 +44,8 @@
 
 static const unsigned char key[] = { 0x60, 0x3d, 0xeb, 0x10, 0x15, 0xca, 0x71, 0xbe, 0x2b, 0x73, 0xae, 0xf0, 0x85, 0x7d, 0x77, 0x81,
                                      0x1f, 0x35, 0x2c, 0x07, 0x3b, 0x61, 0x08, 0xd7, 0x2d, 0x98, 0x10, 0xa3, 0x09, 0x14, 0xdf, 0xf4 };
-static uint32_t prev_counter = 0;
 
 #define NDISCARD 5                /* BER measure optionally discards first few frames after sync */
-
-static uint32_t get_key_counter()
-{
-    struct tm utc_time;
-    time_t local_time = time( NULL );
-    gmtime_r(&local_time, &utc_time);
-
-    return (((uint32_t)utc_time.tm_year) << 21) |
-           (((uint32_t)utc_time.tm_mon)  << 17) |
-           (((uint32_t)utc_time.tm_mday) << 12) |
-           (((uint32_t)utc_time.tm_hour) <<  6) ; /* Placeholder for minutes */
-}
-
-static void rotate_key(const unsigned char master_key[],
-                       uint32_t            master_key_size,
-                       uint32_t            counter,
-                       unsigned char       derived_key[])
-{
-    counter = htonl(counter);
-
-    hmac_sha256(derived_key, (const uint8_t*)&counter, sizeof(counter), master_key, master_key_size);
-}
-
-static size_t do_fread(struct freedv* freedv, void *ptr, size_t size, size_t nmemb, FILE *stream) {
-    uint32_t cur_counter = get_key_counter();
-    if (prev_counter != cur_counter)
-    {
-        unsigned char iv[16] = { 0 };
-        unsigned char session_key[HMAC_SHA256_DIGEST_SIZE];
-        rotate_key(key, sizeof(key), cur_counter, session_key);
-
-        freedv_set_crypto(freedv, session_key, iv);
-
-        prev_counter = cur_counter;
-    }
-
-    return fread(ptr, size, nmemb, stream);
-}
 
 int main(int argc, char *argv[]) {
     FILE                      *fin, *fout;
@@ -178,6 +137,9 @@ int main(int argc, char *argv[]) {
     }
     assert(freedv != NULL);
 
+    unsigned char iv[16] = { 0 };
+    freedv_set_crypto(freedv, key, iv);
+
     /* set up a few options, calling these is optional -------------------------*/
     
     freedv_set_test_frames(freedv, use_testframes);
@@ -200,7 +162,7 @@ int main(int argc, char *argv[]) {
        output speech samples "nout" is time varying. */
 
     nin = freedv_nin(freedv);
-    while(do_fread(freedv, demod_in, sizeof(short), nin, fin) == nin) {
+    while(fread(demod_in, sizeof(short), nin, fin) == nin) {
         frame++;
         
         if (use_complex) {

@@ -27,6 +27,7 @@
 #include "debug_alloc.h"
 
 #include "aes.h"
+#include "hmac-sha256.h"
 
 void freedv_2400a_open(struct freedv *f) {
     f->n_protocol_bits = 20;
@@ -361,14 +362,22 @@ void freedv_encrypt(struct freedv_crypto* c, uint8_t frame[], int bits_per_frame
     int iv_bytes_save = bits_per_frame/8;
 
     /* Save the initialization vector to a temporary to sychronize the stream */
-    uint8_t tmp[sizeof(c->tx_iv)];
-    memcpy(tmp, c->tx_iv, sizeof(c->tx_iv));
+    uint8_t cur_iv[sizeof(c->tx_iv)];
+    memcpy(cur_iv, c->tx_iv, sizeof(c->tx_iv));
+
+    uint8_t block_key[AES_KEYLEN];
+    /* Hash the IV with the master key to obtain a block key */
+    hmac_sha256(block_key, cur_iv, sizeof(cur_iv), c->master_key, sizeof(c->master_key));
+
+    /* Initialize encryptor with the block key */
+    struct AES_ctx aes_ctx;
+    AES_init_ctx(&aes_ctx, block_key);
 
     /* AES-CFB mode: encrypt the IV, then XOR the result with the plaintext
        to obtain ciphertext */
-    AES_ECB_encrypt(&c->aes_ctx, tmp);
+    AES_ECB_encrypt(&aes_ctx, cur_iv);
     for (i=0;i<n_packed_bytes;i++) {
-        frame[i] ^= tmp[i];
+        frame[i] ^= cur_iv[i];
     }
 
     /* Shift part of the ciphertext into the IV */
@@ -381,20 +390,28 @@ void freedv_decrypt(struct freedv_crypto* c, uint8_t frame[], int bits_per_frame
     int i;
     int n_packed_bytes = (bits_per_frame + 7)/8;
     int iv_bytes_save = bits_per_frame/8;
-    uint8_t tmp[sizeof(c->rx_iv)];
+    uint8_t cur_iv[sizeof(c->rx_iv)];
 
-    /* Save off the current IV for shifting */
-    memcpy(tmp, c->rx_iv, sizeof(c->rx_iv));
+    /* Save off the current IV for shifting and key derivation */
+    memcpy(cur_iv, c->rx_iv, sizeof(c->rx_iv));
+
+    uint8_t block_key[AES_KEYLEN];
+    /* Hash the IV with the master key to obtain a block key */
+    hmac_sha256(block_key, cur_iv, sizeof(cur_iv), c->master_key, sizeof(c->master_key));
 
     /* Shift part of the ciphertext into the IV */
     memmove(c->rx_iv + iv_bytes_save, c->rx_iv, sizeof(c->rx_iv) - iv_bytes_save);
     memcpy(c->rx_iv, frame, iv_bytes_save);
 
+    /* Initialize encryptor with the block key */
+    struct AES_ctx aes_ctx;
+    AES_init_ctx(&aes_ctx, block_key);
+
     /* AES-CFB mode: encrypt the IV, then XOR the result with the ciphertext
        to obtain plaintext */
-    AES_ECB_encrypt(&c->aes_ctx, tmp);
+    AES_ECB_encrypt(&aes_ctx, cur_iv);
     for (i=0;i<n_packed_bytes;i++) {
         /* Write the decrypted bytes */
-        frame[i] ^=  tmp[i];
+        frame[i] ^=  cur_iv[i];
     }
 }
