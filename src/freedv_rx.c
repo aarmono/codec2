@@ -160,6 +160,10 @@ int main(int argc, char *argv[]) {
        and rx sample clock frequencies.  Note also the number of
        output speech samples "nout" is time varying. */
 
+    /* If using pipes we don't want the usual buffering to occur */
+    if (fin == stdin) setbuf(stdin, NULL);
+    if (fout == stdout) setbuf(stdout, NULL);
+
     nin = freedv_nin(freedv);
     while(fread(demod_in, sizeof(short), nin, fin) == nin) {
         frame++;
@@ -204,10 +208,6 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "frame: %d  demod sync: %d  nin: %d demod snr: %3.2f dB  bit errors: %d clock_offset: %f\n",
                     frame, sync, nin, snr_est, total_bit_errors, clock_offset);
         }
-
-	/* if using pipes we probably don't want the usual buffering
-           to occur */
-        if (fout == stdout) fflush(stdout);
     }
 
     fclose(fin);

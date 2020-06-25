@@ -131,13 +131,14 @@ int main(int argc, char *argv[]) {
     int n_nom_modem_samples = freedv_get_n_nom_modem_samples(freedv);
     short mod_out[n_nom_modem_samples];
 
+    /* If using pipes we don't want the usual buffering to occur */
+    if (fin == stdin) setbuf(stdin, NULL);
+    if (fout == stdout) setbuf(stdout, NULL);
+
     /* OK main loop  --------------------------------------- */
     while(fread(speech_in, sizeof(short), n_speech_samples, fin) == n_speech_samples) {
         freedv_tx(freedv, mod_out, speech_in);
         fwrite(mod_out, sizeof(short), n_nom_modem_samples, fout);
-    
-        /* if using pipes we don't want the usual buffering to occur */
-        if (fout == stdout) fflush(stdout);
     }
     
     freedv_close(freedv);
