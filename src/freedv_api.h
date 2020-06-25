@@ -86,6 +86,10 @@
 
 #define FDV_MODE_ACTIVE(mode_name, var)  ((mode_name##_EN) == 0 ? 0: (var) == mode_name)
 
+#ifndef FREEDV_MASTER_KEY_LENGTH
+#define FREEDV_MASTER_KEY_LENGTH 32
+#endif
+
 // optional operator control of 700D state machine
 #define FREEDV_SYNC_UNSYNC 0                 // force sync state machine to lose sync, and search for new sync
 #define FREEDV_SYNC_AUTO   1                 // falls out of sync automatically
