@@ -1077,7 +1077,7 @@ void freedv_set_crypto(struct freedv *f, const unsigned char key[], const unsign
     else if (iv != NULL) {
         memcpy(f->aes_module->tx_iv, iv, sizeof(f->aes_module->tx_iv));
     }
-    else {
+    else if (f->aes_module != NULL) {
         FREE(f->aes_module);
         f->aes_module = NULL;
     }
