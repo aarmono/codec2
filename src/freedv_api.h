@@ -87,7 +87,7 @@
 #define FDV_MODE_ACTIVE(mode_name, var)  ((mode_name##_EN) == 0 ? 0: (var) == mode_name)
 
 #ifndef FREEDV_MASTER_KEY_LENGTH
-#define FREEDV_MASTER_KEY_LENGTH 32
+#define FREEDV_MASTER_KEY_LENGTH 131
 #endif
 
 // optional operator control of 700D state machine
