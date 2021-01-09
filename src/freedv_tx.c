@@ -28,32 +28,44 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdint.h>
 #include <string.h>
 #include <errno.h>
 
 #include "freedv_api.h"
 
-static const unsigned char key[FREEDV_MASTER_KEY_LENGTH] =
-{
-    0x60, 0x3d, 0xeb, 0x10, 0x15, 0xca, 0x71, 0xbe, 0x2b, 0x73, 0xae, 0xf0, 0x85, 0x7d, 0x77, 0x81,
-    0x1f, 0x35, 0x2c, 0x07, 0x3b, 0x61, 0x08, 0xd7, 0x2d, 0x98, 0x10, 0xa3, 0x09, 0x14, 0xdf, 0xf4
+struct my_callback_state {
+    char  tx_str[80];
+    char *ptx_str;
+    int calls;
 };
+
+char my_get_next_tx_char(void *callback_state) {
+    struct my_callback_state* pstate = (struct my_callback_state*)callback_state;
+    char  c = *pstate->ptx_str++;
+
+    //fprintf(stderr, "my_get_next_tx_char: %c\n", c);
+
+    if (*pstate->ptx_str == 0) {
+        pstate->ptx_str = pstate->tx_str;
+    }
+
+    return c;
+}
 
 int main(int argc, char *argv[]) {
     FILE                     *fin, *fout;
     struct freedv            *freedv;
     int                       mode;
-    int                       use_testframes, interleave_frames, use_clip, use_txbpf, use_dpsk;
+    int                       use_testframes, use_clip, use_txbpf, use_dpsk;
     int                       i;
 
     if (argc < 4) {
         char f2020[80] = {0};
         #ifdef __LPCNET__
         sprintf(f2020,"|2020");
-        #endif     
-        printf("usage: %s 1600|700C|700D|2400A|2400B|800XA%s InputRawSpeechFile OutputModemRawFile\n"
-               " [--testframes] [--interleave depth] [--clip 0|1] [--txbpf 0|1] [--dpsk]\n", argv[0], f2020);
+        #endif
+        printf("usage: %s 1600|700C|700D|700E|2400A|2400B|800XA%s InputRawSpeechFile OutputModemRawFile\n"
+               " [--testframes] [--clip 0|1] [--txbpf 0|1] [--dpsk]\n", argv[0], f2020);
         printf("e.g    %s 1600 hts1a.raw hts1a_fdmdv.raw\n", argv[0]);
         exit(1);
     }
@@ -62,6 +74,7 @@ int main(int argc, char *argv[]) {
     if (!strcmp(argv[1],"1600")) mode = FREEDV_MODE_1600;
     if (!strcmp(argv[1],"700C")) mode = FREEDV_MODE_700C;
     if (!strcmp(argv[1],"700D")) mode = FREEDV_MODE_700D;
+    if (!strcmp(argv[1],"700E")) mode = FREEDV_MODE_700E;
     if (!strcmp(argv[1],"2400A")) mode = FREEDV_MODE_2400A;
     if (!strcmp(argv[1],"2400B")) mode = FREEDV_MODE_2400B;
     if (!strcmp(argv[1],"800XA")) mode = FREEDV_MODE_800XA;
@@ -85,40 +98,23 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    use_testframes = 0; interleave_frames = 1; use_clip = 0; use_txbpf = 1; use_dpsk = 0;
-    
+    use_testframes = 0; use_clip = 0; use_txbpf = 1; use_dpsk = 0;
+
     if (argc > 4) {
         for (i = 4; i < argc; i++) {
             if (strcmp(argv[i], "--testframes") == 0) use_testframes = 1;
-            else if (strcmp(argv[i], "--interleave") == 0) { interleave_frames = atoi(argv[i+1]); i++; }
             else if (strcmp(argv[i], "--clip") == 0) { use_clip = atoi(argv[i+1]); i++; }
             else if (strcmp(argv[i], "--txbpf") == 0) { use_txbpf = atoi(argv[i+1]); i++; }
             else if (strcmp(argv[i], "--dpsk") == 0) use_dpsk = 1;
             else {
-                fprintf(stderr, "unkown option: %s\n", argv[i]);
+                fprintf(stderr, "unknown option: %s\n", argv[i]);
                 exit(1);
             }
         }
     }
 
-    /* freedv_open_advanced() for non-standard start up */ 
-    if ((mode == FREEDV_MODE_700D) || (mode == FREEDV_MODE_2020)) {
-        struct freedv_advanced adv;
-        adv.interleave_frames = interleave_frames;
-        freedv = freedv_open_advanced(mode, &adv);
-    }
-    else {
-        /* Just use this normally */
-        freedv = freedv_open(mode);
-    }
+    freedv = freedv_open(mode);
     assert(freedv != NULL);
-
-    unsigned char iv[16];
-    FILE* urandom = fopen("/dev/urandom", "rb");
-    fread(iv, sizeof(iv), 1, urandom);
-    fclose(urandom);
-
-    freedv_set_crypto(freedv, key, iv);
 
     /* these are all optional ------------------ */
     freedv_set_test_frames(freedv, use_testframes);
@@ -127,6 +123,13 @@ int main(int argc, char *argv[]) {
     freedv_set_dpsk(freedv, use_dpsk);
     freedv_set_verbose(freedv, 1);
 
+    /* set up callback for txt msg chars */
+    struct my_callback_state  my_cb_state;
+    sprintf(my_cb_state.tx_str, "cq cq cq hello world\r");
+    my_cb_state.ptx_str = my_cb_state.tx_str;
+    my_cb_state.calls = 0;
+    freedv_set_callback_txt(freedv, NULL, &my_get_next_tx_char, &my_cb_state);
+
     /* handy functions to set buffer sizes, note tx/modulator always
        returns freedv_get_n_nom_modem_samples() (unlike rx side) */
     int n_speech_samples = freedv_get_n_speech_samples(freedv);
@@ -134,20 +137,20 @@ int main(int argc, char *argv[]) {
     int n_nom_modem_samples = freedv_get_n_nom_modem_samples(freedv);
     short mod_out[n_nom_modem_samples];
 
-    /* If using pipes we don't want the usual buffering to occur */
-    if (fin == stdin) setbuf(stdin, NULL);
-    if (fout == stdout) setbuf(stdout, NULL);
-
     /* OK main loop  --------------------------------------- */
+
     while(fread(speech_in, sizeof(short), n_speech_samples, fin) == n_speech_samples) {
         freedv_tx(freedv, mod_out, speech_in);
         fwrite(mod_out, sizeof(short), n_nom_modem_samples, fout);
+
+        /* if using pipes we don't want the usual buffering to occur */
+        if (fout == stdout) fflush(stdout);
+        if (fin == stdin) fflush(stdin);
     }
-    
+
     freedv_close(freedv);
     fclose(fin);
     fclose(fout);
-    
+
     return 0;
 }
-
