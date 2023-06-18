@@ -11,7 +11,7 @@
 #include "assert.h"
 #include "ldpc_codes.h"
 #include "interldpc.h"
-#include "H2064_516_sparse.h"
+#include "H_2064_516_sparse.h"
 #include "HRA_112_112.h"
 #include "HRAb_396_504.h"
 #include "H_256_768_22.h"
@@ -19,6 +19,10 @@
 #include "HRAa_1536_512.h"
 #include "H_128_256_5.h"
 #include "HRA_56_56.h"
+#include "H_4096_8192_3d.h"
+#include "H_16200_9720.h"
+#include "H_1024_2048_4f.h"
+#include "H_212_158.h"
 
 struct LDPC ldpc_codes[] = {
     /* short rate 1/2 code for FreeDV 700D */
@@ -35,7 +39,8 @@ struct LDPC ldpc_codes[] = {
         HRA_112_112_MAX_COL_WEIGHT,
         (uint16_t *)HRA_112_112_H_rows,
         (uint16_t *)HRA_112_112_H_cols
-    },
+    }
+    ,
     /* short rate 1/2 code for FreeDV 700E */
     {
         "HRA_56_56",
@@ -50,14 +55,12 @@ struct LDPC ldpc_codes[] = {
         HRA_56_56_MAX_COL_WEIGHT,
         (uint16_t *)HRA_56_56_H_rows,
         (uint16_t *)HRA_56_56_H_cols
-#ifdef __EMBEDDED__
-    }
-#else
     },
+    #ifndef __EMBEDDED__
 
     /* default Wenet High Alitiude Balloon rate 0.8 code */
     {
-        "H2064_516_sparse",
+        "H_2064_516_sparse",
         MAX_ITER,
         0,
         1,
@@ -67,8 +70,8 @@ struct LDPC ldpc_codes[] = {
         NUMBERROWSHCOLS,
         MAX_ROW_WEIGHT,
         MAX_COL_WEIGHT,
-        H_rows,
-        H_cols
+        (uint16_t *)H_2064_516_sparse_H_rows,
+        (uint16_t *)H_2064_516_sparse_H_cols
     },
 
     /* rate 0.8 code used for FreeDV 2020 */
@@ -84,9 +87,26 @@ struct LDPC ldpc_codes[] = {
         HRAb_396_504_MAX_ROW_WEIGHT,
         HRAb_396_504_MAX_COL_WEIGHT,
         (uint16_t *)HRAb_396_504_H_rows,
-            (uint16_t *)HRAb_396_504_H_cols
+        (uint16_t *)HRAb_396_504_H_cols
     },
 
+    
+    /* Rate 0.745 code for mopping up errors on 2020C from Bill VK5DSP */ 
+    {
+        "H_212_158",
+        H_212_158_MAX_ITER,
+        0,
+        1,
+        1,
+        H_212_158_CODELENGTH,
+        H_212_158_NUMBERPARITYBITS,
+        H_212_158_NUMBERROWSHCOLS,
+        H_212_158_MAX_ROW_WEIGHT,
+        H_212_158_MAX_COL_WEIGHT,
+        (uint16_t *)H_212_158_H_rows,
+        (uint16_t *)H_212_158_H_cols
+    },
+    
     /* rate 1/3 code, works at raw BER of 14% */
     {
         "H_256_768_22",
@@ -149,8 +169,56 @@ struct LDPC ldpc_codes[] = {
         H_128_256_5_MAX_COL_WEIGHT,
         (uint16_t *)H_128_256_5_H_rows,
         (uint16_t *)H_128_256_5_H_cols
+    },
+
+    /* Nice long code from Bill VK5DSP - useful for HF data */
+    {
+        "H_4096_8192_3d",
+        H_4096_8192_3d_MAX_ITER,
+        0,
+        1,
+        1,
+        H_4096_8192_3d_CODELENGTH,
+        H_4096_8192_3d_NUMBERPARITYBITS,
+        H_4096_8192_3d_NUMBERROWSHCOLS,
+        H_4096_8192_3d_MAX_ROW_WEIGHT,
+        H_4096_8192_3d_MAX_COL_WEIGHT,
+        (uint16_t *)H_4096_8192_3d_H_rows,
+        (uint16_t *)H_4096_8192_3d_H_cols
+    },
+
+    /* Nice long code from Bill VK5DSP - useful for HF data */
+    {
+        "H_16200_9720",
+        H_16200_9720_MAX_ITER,
+        0,
+        1,
+        1,
+        H_16200_9720_CODELENGTH,
+        H_16200_9720_NUMBERPARITYBITS,
+        H_16200_9720_NUMBERROWSHCOLS,
+        H_16200_9720_MAX_ROW_WEIGHT,
+        H_16200_9720_MAX_COL_WEIGHT,
+        (uint16_t *)H_16200_9720_H_rows,
+        (uint16_t *)H_16200_9720_H_cols
+    },
+     
+    /* Another fine code from Bill VK5DSP - also useful for HF data */ 
+    {
+        "H_1024_2048_4f",
+        H_1024_2048_4f_MAX_ITER,
+        0,
+        1,
+        1,
+        H_1024_2048_4f_CODELENGTH,
+        H_1024_2048_4f_NUMBERPARITYBITS,
+        H_1024_2048_4f_NUMBERROWSHCOLS,
+        H_1024_2048_4f_MAX_ROW_WEIGHT,
+        H_1024_2048_4f_MAX_COL_WEIGHT,
+        (uint16_t *)H_1024_2048_4f_H_rows,
+        (uint16_t *)H_1024_2048_4f_H_cols
     }
-#endif
+    #endif
 };
 
 int ldpc_codes_num(void) { return sizeof(ldpc_codes)/sizeof(struct LDPC); }
@@ -161,7 +229,7 @@ void ldpc_codes_list() {
         int n =  ldpc_codes[c].NumberRowsHcols + ldpc_codes[c].NumberParityBits;
         int k = ldpc_codes[c].NumberRowsHcols;
         float rate = (float)k/n;
-        fprintf(stderr, "%-20s rate %3.2f (%d,%d) \n", ldpc_codes[c].name, rate, n, k);
+        fprintf(stderr, "%-20s rate %3.2f (%d,%d) \n", ldpc_codes[c].name, (double)rate, n, k);
     }
     fprintf(stderr, "\n");
 }

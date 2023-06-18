@@ -69,20 +69,7 @@ int lspd_bits(int i) {
 }
 
 int lsp_pred_vq_bits(int i) {
-    return lsp_cbjvm[i].log2m;
-}
-
-/*---------------------------------------------------------------------------*\
-
-  quantise_init
-
-  Loads the entire LSP quantiser comprised of several vector quantisers
-  (codebooks).
-
-\*---------------------------------------------------------------------------*/
-
-void quantise_init()
-{
+    return lsp_cbjmv[i].log2m;
 }
 
 /*---------------------------------------------------------------------------*\
@@ -135,7 +122,7 @@ long quantise(const float * cb, float vec[], float w[], int k, int m, float *se)
 
   encode_lspds_scalar()
 
-  Scalar/VQ LSP difference quantiser.
+  Scalar/VQ LSP difference-in-frequency quantiser.
 
 \*---------------------------------------------------------------------------*/
 
@@ -167,7 +154,7 @@ void encode_lspds_scalar(
     wt[0] = 1.0;
     for(i=0; i<order; i++) {
 
-	/* find difference from previous qunatised lsp */
+	/* find difference from previous quantised lsp */
 
 	if (i)
 	    dlsp[i] = lsp_hz[i] - lsp__hz[i-1];
@@ -179,7 +166,6 @@ void encode_lspds_scalar(
 	cb = lsp_cbd[i].cb;
 	indexes[i] = quantise(cb, &dlsp[i], wt, k, m, &se);
  	dlsp_[i] = cb[indexes[i]*k];
-
 
 	if (i)
 	    lsp__hz[i] = lsp__hz[i-1] + dlsp_[i];
@@ -272,14 +258,14 @@ int find_nearest_weighted(const float *codebook, int nb_entries, float *x, const
   return nearest;
 }
 
-void lspjvm_quantise(float *x, float *xq, int order)
+void lspjmv_quantise(float *x, float *xq, int order)
 {
   int i, n1, n2, n3;
   float err[order], err2[order], err3[order];
   float w[order], w2[order], w3[order];
-  const float *codebook1 = lsp_cbjvm[0].cb;
-  const float *codebook2 = lsp_cbjvm[1].cb;
-  const float *codebook3 = lsp_cbjvm[2].cb;
+  const float *codebook1 = lsp_cbjmv[0].cb;
+  const float *codebook2 = lsp_cbjmv[1].cb;
+  const float *codebook3 = lsp_cbjmv[2].cb;
 
   w[0] = MIN(x[0], x[1]-x[0]);
   for (i=1;i<order-1;i++)
@@ -288,7 +274,7 @@ void lspjvm_quantise(float *x, float *xq, int order)
 
   compute_weights(x, w, order);
 
-  n1 = find_nearest(codebook1, lsp_cbjvm[0].m, x, order);
+  n1 = find_nearest(codebook1, lsp_cbjmv[0].m, x, order);
 
   for (i=0;i<order;i++)
   {
@@ -302,8 +288,8 @@ void lspjvm_quantise(float *x, float *xq, int order)
     w2[i] = w[2*i];
     w3[i] = w[2*i+1];
   }
-  n2 = find_nearest_weighted(codebook2, lsp_cbjvm[1].m, err2, w2, order/2);
-  n3 = find_nearest_weighted(codebook3, lsp_cbjvm[2].m, err3, w3, order/2);
+  n2 = find_nearest_weighted(codebook2, lsp_cbjmv[1].m, err2, w2, order/2);
+  n3 = find_nearest_weighted(codebook3, lsp_cbjmv[2].m, err3, w3, order/2);
 
   for (i=0;i<order/2;i++)
   {
@@ -347,7 +333,7 @@ void force_min_lsp_dist(float lsp[], int order)
    lpc_post_filter()
 
    Applies a post filter to the LPC synthesis filter power spectrum
-   Pw, which supresses the inter-formant energy.
+   Pw, which suppresses the inter-formant energy.
 
    The algorithm is from p267 (Section 8.6) of "Digital Speech",
    edited by A.M. Kondoz, 1994 published by Wiley and Sons.  Chapter 8
@@ -361,7 +347,7 @@ void force_min_lsp_dist(float lsp[], int order)
    it should be possible to implement this more efficiently in the
    time domain.  Just not sure how to handle relative time delays
    between the synthesis stage and updating these coeffs.  A smaller
-   FFT size might also be accetable to save CPU.
+   FFT size might also be acceptable to save CPU.
 
    TODO:
    [ ] sync var names between Octave and C version
@@ -597,7 +583,7 @@ void aks_to_M2(
          just above nulls.  This algorithm does the reverse to
          compensate - raising the amplitudes of spectral peaks, while
          attenuating the null.  This enhances the formants, and
-         supresses the energy between formants. */
+         suppresses the energy between formants. */
 
       if (sim_pf) {
           if (Am > model->A[m])
@@ -780,8 +766,8 @@ float speech_to_uq_lsps(float lsp[],
   AUTHOR......: David Rowe
   DATE CREATED: 22/8/2010
 
-  Thirty-six bit sclar LSP quantiser. From a vector of unquantised
-  (floating point) LSPs finds the quantised LSP indexes.
+  Scalar LSP quantiser. From a vector of unquantised (floating point)
+  LSPs finds the quantised LSP indexes.
 
 \*---------------------------------------------------------------------------*/
 
@@ -854,9 +840,9 @@ void encode_lsps_vq(int *indexes, float *x, float *xq, int order)
   int i, n1, n2, n3;
   float err[order], err2[order], err3[order];
   float w[order], w2[order], w3[order];
-  const float *codebook1 = lsp_cbjvm[0].cb;
-  const float *codebook2 = lsp_cbjvm[1].cb;
-  const float *codebook3 = lsp_cbjvm[2].cb;
+  const float *codebook1 = lsp_cbjmv[0].cb;
+  const float *codebook2 = lsp_cbjmv[1].cb;
+  const float *codebook3 = lsp_cbjmv[2].cb;
 
   w[0] = MIN(x[0], x[1]-x[0]);
   for (i=1;i<order-1;i++)
@@ -865,7 +851,7 @@ void encode_lsps_vq(int *indexes, float *x, float *xq, int order)
 
   compute_weights(x, w, order);
 
-  n1 = find_nearest(codebook1, lsp_cbjvm[0].m, x, order);
+  n1 = find_nearest(codebook1, lsp_cbjmv[0].m, x, order);
 
   for (i=0;i<order;i++)
   {
@@ -879,8 +865,8 @@ void encode_lsps_vq(int *indexes, float *x, float *xq, int order)
     w2[i] = w[2*i];
     w3[i] = w[2*i+1];
   }
-  n2 = find_nearest_weighted(codebook2, lsp_cbjvm[1].m, err2, w2, order/2);
-  n3 = find_nearest_weighted(codebook3, lsp_cbjvm[2].m, err3, w3, order/2);
+  n2 = find_nearest_weighted(codebook2, lsp_cbjmv[1].m, err2, w2, order/2);
+  n3 = find_nearest_weighted(codebook3, lsp_cbjmv[2].m, err3, w3, order/2);
 
   indexes[0] = n1;
   indexes[1] = n2;
@@ -899,9 +885,9 @@ void encode_lsps_vq(int *indexes, float *x, float *xq, int order)
 void decode_lsps_vq(int *indexes, float *xq, int order, int stages)
 {
   int i, n1, n2, n3;
-  const float *codebook1 = lsp_cbjvm[0].cb;
-  const float *codebook2 = lsp_cbjvm[1].cb;
-  const float *codebook3 = lsp_cbjvm[2].cb;
+  const float *codebook1 = lsp_cbjmv[0].cb;
+  const float *codebook2 = lsp_cbjmv[1].cb;
+  const float *codebook3 = lsp_cbjmv[2].cb;
 
   n1 = indexes[0];
   n2 = indexes[1];
@@ -1107,7 +1093,7 @@ void compute_weights2(const float *x, const float *xp, float *w)
   both the pitch and energy tend to only change by small amounts
   during voiced speech, however it is important that these changes be
   coded carefully.  During unvoiced speech they both change a lot but
-  the ear is less sensitve to errors so coarser quantisation is OK.
+  the ear is less sensitive to errors so coarser quantisation is OK.
 
   The ear is sensitive to log energy and loq pitch so we quantise in
   these domains.  That way the error measure used to quantise the

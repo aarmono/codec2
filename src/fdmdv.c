@@ -884,7 +884,7 @@ void fdmdv_freq_shift(COMP rx_fdm_fcorr[], COMP rx_fdm[], float foff,
 	rx_fdm_fcorr[i] = cmult(rx_fdm[i], *foff_phase_rect);
     }
 
-    /* normalise digital oscilator as the magnitude can drfift over time */
+    /* normalise digital oscillator as the magnitude can drift over time */
 
     mag = cabsolute(*foff_phase_rect);
     foff_phase_rect->real /= mag;
@@ -943,7 +943,7 @@ void fdm_downconvert(COMP rx_baseband[NC+1][M_FAC+M_FAC/P], int Nc, COMP rx_fdm[
 
 \*---------------------------------------------------------------------------*/
 
-void rx_filter(COMP rx_filt[NC+1][P+1], int Nc, COMP rx_baseband[NC+1][M_FAC+M_FAC/P], COMP rx_filter_memory[NC+1][NFILTER], int nin)
+void rx_filter(COMP rx_filt[][P+1], int Nc, COMP rx_baseband[][M_FAC+M_FAC/P], COMP rx_filter_memory[][NFILTER], int nin)
 {
     int c, i,j,k,l;
     int n=M_FAC/P;
@@ -1014,14 +1014,14 @@ void rxdec_filter(COMP rx_fdm_filter[], COMP rx_fdm[], COMP rxdec_lpf_mem[], int
   AUTHOR......: Danilo Beuche
   DATE CREATED: August 2016
 
-  Ths version submitted by Danilo for the STM32F4 platform.  The idea
+  This version submitted by Danilo for the STM32F4 platform.  The idea
   is to avoid reading the same value from the STM32F4 "slow" flash
   twice. 2-4ms of savings per frame were measured by Danilo and the mcHF
   team.
 
 \*---------------------------------------------------------------------------*/
 
-static void fir_filter2(float acc[2], float mem[], const float coeff[], const unsigned int dec_rate) {
+static void fir_filter2(float acc[], float mem[], const float coeff[], const unsigned int dec_rate) {
     acc[0] = 0.0;
     acc[1] = 0.0;
 
@@ -1234,8 +1234,8 @@ void down_convert_and_rx_filter(COMP rx_filt[NC+1][P+1], int Nc, COMP rx_fdm[],
 
 float rx_est_timing(COMP rx_symbols[],
                     int  Nc,
-		    COMP rx_filt[NC+1][P+1],
-		    COMP rx_filter_mem_timing[NC+1][NT*P],
+		    COMP rx_filt[][P+1],
+		    COMP rx_filter_mem_timing[][NT*P],
 		    float env[],
 		    int nin,
                     int m)
@@ -1759,21 +1759,16 @@ void fdmdv_get_demod_stats(struct FDMDV *fdmdv, struct MODEM_STATS *stats)
 
 \*---------------------------------------------------------------------------*/
 
-void fdmdv_8_to_16(float out16k[], float in8k[], int n)
+void fdmdv_8_to_16(float out16k[], float in8k[], int n8k)
 {
     int i,k,l;
     float acc;
-
-    /* make sure n is an integer multiple of the oversampling rate, ow
-       this function breaks */
-
-    assert((n % FDMDV_OS) == 0);
 
     /* this version unrolled for specific FDMDV_OS */
 
     assert(FDMDV_OS == 2);
 
-    for(i=0; i<n; i++) {
+    for(i=0; i<n8k; i++) {
         acc = 0.0;
         for(k=0,l=0; k<FDMDV_OS_TAPS_16K; k+=FDMDV_OS,l++)
             acc += fdmdv_os_filter[k]*in8k[i-l];
@@ -1788,25 +1783,20 @@ void fdmdv_8_to_16(float out16k[], float in8k[], int n)
     /* update filter memory */
 
     for(i=-(FDMDV_OS_TAPS_8K); i<0; i++)
-	in8k[i] = in8k[i + n];
+	in8k[i] = in8k[i + n8k];
 
 }
 
-void fdmdv_8_to_16_short(short out16k[], short in8k[], int n)
+void fdmdv_8_to_16_short(short out16k[], short in8k[], int n8k)
 {
     int i,k,l;
     float acc;
-
-    /* make sure n is an integer multiple of the oversampling rate, ow
-       this function breaks */
-
-    assert((n % FDMDV_OS) == 0);
 
     /* this version unrolled for specific FDMDV_OS */
 
     assert(FDMDV_OS == 2);
 
-    for(i=0; i<n; i++) {
+    for(i=0; i<n8k; i++) {
         acc = 0.0;
         for(k=0,l=0; k<FDMDV_OS_TAPS_16K; k+=FDMDV_OS,l++)
             acc += fdmdv_os_filter[k]*(float)in8k[i-l];
@@ -1821,7 +1811,7 @@ void fdmdv_8_to_16_short(short out16k[], short in8k[], int n)
     /* update filter memory */
 
     for(i=-(FDMDV_OS_TAPS_8K); i<0; i++)
-	in8k[i] = in8k[i + n];
+	in8k[i] = in8k[i + n8k];
 
 }
 
@@ -1880,6 +1870,108 @@ void fdmdv_16_to_8_short(short out8k[], short in16k[], int n)
 
 
 /*---------------------------------------------------------------------------*\
+                                                       
+  FUNCTION....: fdmdv_8_to_48()	     
+  AUTHOR......: David Rowe			      
+  DATE CREATED: 9 May 2012
+
+  Changes the sample rate of a signal from 8 to 48 kHz.
+
+  n is the number of samples at the 8 kHz rate, there are FDMDV_OS*n samples
+  at the 48 kHz rate.  A memory of FDMDV_OS_TAPS_48/FDMDV_OS samples is reqd for
+  in8k[] (see t48_8.c unit test as example).
+
+\*---------------------------------------------------------------------------*/
+
+void fdmdv_8_to_48(float out48k[], float in8k[], int n)
+{
+    int i,j,k,l;
+
+    for(i=0; i<n; i++) {
+	for(j=0; j<FDMDV_OS_48; j++) {
+	    out48k[i*FDMDV_OS_48+j] = 0.0;
+	    for(k=0,l=0; k<FDMDV_OS_TAPS_48K; k+=FDMDV_OS_48,l++)
+		out48k[i*FDMDV_OS_48+j] += fdmdv_os_filter48[k+j]*in8k[i-l];
+	    out48k[i*FDMDV_OS_48+j] *= FDMDV_OS_48;
+	    
+	}
+    }	
+
+    /* update filter memory */
+
+    for(i=-FDMDV_OS_TAPS_48_8K; i<0; i++)
+	in8k[i] = in8k[i + n];
+}
+
+void fdmdv_8_to_48_short(short out48k[], short in8k[], int n)
+{
+    int i,j,k,l;
+    float acc;
+    
+    for(i=0; i<n; i++) {
+	for(j=0; j<FDMDV_OS_48; j++) {
+	    acc = 0.0;
+	    for(k=0,l=0; k<FDMDV_OS_TAPS_48K; k+=FDMDV_OS_48,l++)
+		acc += fdmdv_os_filter48[k+j]*in8k[i-l];
+	    out48k[i*FDMDV_OS_48+j] = acc*FDMDV_OS_48;	    
+	}
+    }	
+
+    /* update filter memory */
+
+    for(i=-FDMDV_OS_TAPS_48_8K; i<0; i++)
+	in8k[i] = in8k[i + n];
+}
+
+/*---------------------------------------------------------------------------*\
+                                                       
+  FUNCTION....: fdmdv_48_to_8()	     
+  AUTHOR......: David Rowe			      
+  DATE CREATED: 9 May 2012
+
+  Changes the sample rate of a signal from 48 to 8 kHz.
+ 
+  n is the number of samples at the 8 kHz rate, there are FDMDV_OS_48*n
+  samples at the 48 kHz rate.  As above however a memory of
+  FDMDV_OS_TAPS_48 samples is reqd for in48k[] (see t48_8.c unit test as example).
+
+\*---------------------------------------------------------------------------*/
+
+void fdmdv_48_to_8(float out8k[], float in48k[], int n)
+{
+    int i,j;
+
+    for(i=0; i<n; i++) {
+	out8k[i] = 0.0;
+	for(j=0; j<FDMDV_OS_TAPS_48K; j++)
+	    out8k[i] += fdmdv_os_filter48[j]*in48k[i*FDMDV_OS_48-j];
+    }
+
+    /* update filter memory */
+
+    for(i=-FDMDV_OS_TAPS_48K; i<0; i++)
+	in48k[i] = in48k[i + n*FDMDV_OS_48];
+}
+
+void fdmdv_48_to_8_short(short out8k[], short in48k[], int n)
+{
+    int i,j;
+    float acc;
+    
+    for(i=0; i<n; i++) {
+	acc = 0.0;
+	for(j=0; j<FDMDV_OS_TAPS_48K; j++)
+	    acc += fdmdv_os_filter48[j]*in48k[i*FDMDV_OS_48-j];
+        out8k[i] = acc;
+    }
+
+    /* update filter memory */
+
+    for(i=-FDMDV_OS_TAPS_48K; i<0; i++)
+	in48k[i] = in48k[i + n*FDMDV_OS_48];
+}
+
+/*---------------------------------------------------------------------------*\
 
   Function used during development to test if magnitude of digital
   oscillators was drifting.  It was!
@@ -1916,7 +2008,7 @@ void fdmdv_dump_osc_mags(struct FDMDV *f)
 \*---------------------------------------------------------------------------*/
 
 #define RANDN_IT 12  /* This magic number of iterations gives us a
-                        unit variance.  I think beacuse var =
+                        unit variance.  I think because var =
                         (b-a)^2/12 for one uniform random variable, so
                         for a sum of n random variables it's
                         n(b-a)^2/12, or for b=1, a = 0, n=12, we get

@@ -21,23 +21,12 @@ ldpc
 global passes = 0;
 global fails = 0;
 
-% attempt to start up CML, path will be different on your machine
-
-path_to_cml = '~/cml';
-addpath(strcat(path_to_cml, "/mex"), strcat(path_to_cml, "/mat"));
-cml_support = 0;
-if exist("Somap") == 0
-  printf("Can't find CML mex directory so we won't run those tests for now...\n");
-else
-  printf("OK found CML mex directory so will add those tests...\n");
-  cml_support = 1;
-end
+init_cml()
+cml_support = 1
 
 % ---------------------------------------------------------------------
 % Run Octave version 
 % ---------------------------------------------------------------------
-
-Ts = 0.018; Tcp = 0.002; Rs = 1/Ts; bps = 2;
 
 % useful to test the modem at other Nc's, but if Nc != 17 we aren't set up for
 % LDPC testing so disable
@@ -49,8 +38,8 @@ else
 end
 printf("Nc = %d LDPC testing: %d\n", Nc, cml_support);
 
-Ns = 8;
-config.Ns = Ns; config.Rs = Rs; config.Tcp = Tcp; config.Nc = Nc;
+config = ofdm_init_mode("700D");
+config.Nc = Nc;
 states = ofdm_init(config);
 states.verbose = 0;
 ofdm_load_const;
@@ -115,7 +104,7 @@ timing_est_log = timing_valid_log = timing_mx_log = [];
 coarse_foff_est_hz_log = []; sample_point_log = [];
 phase_est_pilot_log = []; rx_amp_log = [];
 rx_np_log = []; rx_bits_log = [];
-sig_var_log = noise_var_log = mean_amp_log = [];
+snr_log = []; mean_amp_log = [];
 
 states.timing_en = 1;
 states.foff_est_en = 1;
@@ -159,9 +148,10 @@ for f=1:Nframes
   sample_point_log = [sample_point_log; states.sample_point];
   rx_np_log = [rx_np_log arx_np];
   rx_bits_log = [rx_bits_log rx_bits];
-  sig_var_log = [sig_var_log; states.sig_var];
-  noise_var_log = [noise_var_log; states.noise_var];
   mean_amp_log = [mean_amp_log; states.mean_amp];
+  EsNo_estdB = esno_est_calc(arx_np);
+  SNR_estdB = snr_from_esno(states, EsNo_estdB);
+  snr_log = [snr_log; SNR_estdB];
   
   % Optional testing of LDPC functions
 
@@ -276,8 +266,7 @@ if cml_support
   check(bit_likelihood_log, bit_likelihood_log_c, 'bit_likelihood_log');
   check(detected_data_log, detected_data_log_c, 'detected_data');
 end
-check(sig_var_log, sig_var_log_c, 'sig_var_log');
-check(noise_var_log, noise_var_log_c, 'noise_var_log');
 check(mean_amp_log, mean_amp_log_c, 'mean_amp_log');
+check(snr_log, snr_log_c, 'snr_log');
 printf("\npasses: %d fails: %d\n", passes, fails);
 

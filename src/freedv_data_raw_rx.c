@@ -31,57 +31,73 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdint.h>
 #include <getopt.h>
+#include <signal.h>
 
 #include "freedv_api.h"
+#include "modem_stats.h"
+#include "octave.h"
 #include "fsk.h"
+#include "ldpc_codes.h"
+
+/* other processes can end this program using signals */
+
+static volatile int finish = 0;
+void  INThandler(int sig) {
+    fprintf(stderr,"signal received: %d\n", sig);
+    finish = 1;
+}
 
 int main(int argc, char *argv[]) {
     FILE                      *fin, *fout;
-    struct freedv_advanced     adv = {0,2,100,8000,1000,200, "H_256_512_4"};
+    char                       codename[80] = "H_256_512_4";
+    struct freedv_advanced     adv = {0,2,100,8000,1000,200, codename};
     struct freedv             *freedv;
     int                        nin, nbytes, nbytes_out = 0, nframes_out = 0, buf = 0;
     int                        mode;
     int                        verbose = 0, use_testframes = 0;
     int                        mask = 0;
-    int                        resetsync = 0;
-
-    if (argc < 3) {
-    helpmsg:
-      	fprintf(stderr, "usage: %s [options] FSK_LDPC|DATAC1|DATAC2|DATAC3 InputModemSpeechFile BinaryDataFile\n"
-               "  -v or --vv              verbose options\n"
-               "  --testframes            count raw and coded errors in testframes sent by tx\n"
-               "  --resetsync  Nframes    reset sync after Nframes received\n"
-               "\n"
-               "For FSK_LDPC only:\n\n"
-               "  -m      2|4     number of FSK tones\n"
-               "  --Fs    FreqHz  sample rate (default 8000)\n"
-               "  --Rs    FreqHz  symbol rate (default 100)\n"
-               "  --mask shiftHz  Use \"mask\" freq estimator (default is \"peak\" estimator)\n", argv[0]);
-       	fprintf(stderr, "e.g    %s DATAC1 off_air_audio.raw received_data_bytes.bin\n", argv[0]);
-	      exit(1);
-    }
-
+    int                        framesperburst = 1;
+    FILE                      *foct = NULL;
+    int                        quiet = 0;
+    int                        single_line_summary = 0;
+    float                      snr_sum = 0.0;
+    int                        fsk_lower = 0, fsk_upper = 0;
+    int                        user_fsk_lower = 0, user_fsk_upper = 0;
+    
     int o = 0;
     int opt_idx = 0;
     while( o != -1 ){
         static struct option long_opts[] = {
-            {"testframes", no_argument,        0, 't'},
-            {"help",       no_argument,        0, 'h'},
-            {"Fs",         required_argument,  0, 'f'},
-            {"Rs",         required_argument,  0, 'r'},
-            {"vv",         no_argument,        0, 'x'},
-            {"mask",       required_argument,  0, 'k'},
-            {"resetsync",  required_argument,  0, 's'},
+            {"testframes",      no_argument,        0, 't'},
+            {"help",            no_argument,        0, 'h'},
+            {"Fs",              required_argument,  0, 'f'},
+            {"Rs",              required_argument,  0, 'r'},
+            {"shift",           required_argument,  0, 's'},
+            {"vv",              no_argument,        0, 'x'},
+            {"vvv",             no_argument,        0, 'y'},
+            {"mask",            required_argument,  0, 'k'},
+            {"framesperburst",  required_argument,  0, 'g'},
+            {"scatter",         required_argument,  0, 'c'},
+            {"quiet",           required_argument,  0, 'q'},
+            {"singleline",      no_argument,        0, 'b'},
+            {"fsk_lower",       required_argument,  0, 'l'},
+            {"fsk_upper",       required_argument,  0, 'u'},
+            {"code",            required_argument,  0, 'o'},
+            {"listcodes",       no_argument,        0, 'i'},
             {0, 0, 0, 0}
         };
 
-        o = getopt_long(argc,argv,"f:hm:r:tvx",long_opts,&opt_idx);
+        o = getopt_long(argc,argv,"bf:hm:qr:tvx",long_opts,&opt_idx);
 
         switch(o) {
+        case 'b':
+            single_line_summary = 1;
+            break;
+        case 'c':
+            foct = fopen(optarg,"wt");
+            assert(foct != NULL);
+            break;
         case 'f':
             adv.Fs = atoi(optarg);
             break;
@@ -92,11 +108,25 @@ int main(int argc, char *argv[]) {
         case 'm':
             adv.M = atoi(optarg);
             break;
+        case 'l':
+            fsk_lower = atoi(optarg);
+            user_fsk_lower = 1;
+            break;
+        case 'u':
+            fsk_upper = atoi(optarg);
+            user_fsk_upper = 1;
+            break;
+        case 'q':
+            quiet = 1;
+            break;
         case 'r':
             adv.Rs = atoi(optarg);
             break;
         case 's':
-            resetsync = atoi(optarg);
+            adv.tone_spacing = atoi(optarg);
+            break;
+        case 'g':
+            framesperburst = atoi(optarg);
             break;
         case 't':
             use_testframes = 1;
@@ -107,6 +137,20 @@ int main(int argc, char *argv[]) {
         case 'x':
             verbose = 2;
             break;
+        case 'y':
+            verbose = 3;
+            break;
+        case 'o':
+            if (ldpc_codes_find(optarg) == -1) {
+                fprintf(stderr, "%s not found, try --listcodes\n", optarg);
+                exit(1);
+            }
+            strcpy(codename, optarg);
+            break;
+        case 'i':
+            ldpc_codes_list();
+            exit(0);
+            break;
         case 'h':
         case '?':
             goto helpmsg;
@@ -115,16 +159,44 @@ int main(int argc, char *argv[]) {
     }
     int dx = optind;
 
+    if (argc < 3) {
+    helpmsg:
+      	fprintf(stderr, "\nusage: %s [options] FSK_LDPC|DATAC0|... InputModemSpeechFile BinaryDataFile\n"
+               "  -v or --vv              verbose options\n"
+               "  --testframes            count raw and coded errors in testframes sent by tx\n"
+               "  --framesperburst  N     N frames per burst (default 1, must match Tx)\n"
+               "  --scatter         file  write scatter diagram symbols to file (Octave text file format)\n"
+               "  --singleline            single line summary at end of test, used for logging\n"
+               "  --quiet\n"
+               "\n"
+               "For FSK_LDPC only:\n\n"
+               "  -m          2|4       number of FSK tones\n"
+               "  --Fs        FreqHz    sample rate (default 8000)\n"
+               "  --Rs        FreqHz    symbol rate (default 100)\n"
+               "  --mask      shiftHz   Use \"mask\" freq estimator (default is \"peak\" estimator)\n\n"
+               "  --shift     FreqHz    shift between tones (default 200)\n"
+               " --fsk_lower  freq      lower limit of freq estimator (default 0)\n"
+               " --fsk_upper  freq      upper limit of freq estimator (default Fs/2)\n"
+               "  --code      CodeName  LDPC code (defaults (512,256)\n"
+               "  --listcodes           list available LDPC codes\n"
+               "\n", argv[0]);
+       	
+        fprintf(stderr, "example: %s --framesperburst 1 --testframes datac0 samples.s16 /dev/null\n\n", argv[0]);
+	    exit(1);
+    }
+
     if( (argc - dx) < 3) {
         fprintf(stderr, "too few arguments.\n");
         goto helpmsg;
     }
 
     mode = -1;
-    if (!strcmp(argv[dx],"FSK_LDPC")) mode = FREEDV_MODE_FSK_LDPC;
-    if (!strcmp(argv[dx],"DATAC1")) mode = FREEDV_MODE_DATAC1;
-    if (!strcmp(argv[dx],"DATAC2")) mode = FREEDV_MODE_DATAC2;
-    if (!strcmp(argv[dx],"DATAC3")) mode = FREEDV_MODE_DATAC3;
+    if (!strcmp(argv[dx],"FSK_LDPC") || !strcmp(argv[dx],"fsk_ldpc")) mode = FREEDV_MODE_FSK_LDPC;
+    if (!strcmp(argv[dx],"DATAC0") || !strcmp(argv[dx],"datac0")) mode = FREEDV_MODE_DATAC0;
+    if (!strcmp(argv[dx],"DATAC1") || !strcmp(argv[dx],"datac1")) mode = FREEDV_MODE_DATAC1;
+    if (!strcmp(argv[dx],"DATAC3") || !strcmp(argv[dx],"datac3")) mode = FREEDV_MODE_DATAC3;
+    if (!strcmp(argv[dx],"DATAC4") || !strcmp(argv[dx],"datac4")) mode = FREEDV_MODE_DATAC4;
+    if (!strcmp(argv[dx],"DATAC13") || !strcmp(argv[dx],"datac13")) mode = FREEDV_MODE_DATAC13;
     if (mode == -1) {
         fprintf(stderr, "Error in mode: %s\n", argv[dx]);
         exit(1);
@@ -144,36 +216,48 @@ int main(int argc, char *argv[]) {
 	     exit(1);
     }
 
-    if (mode != FREEDV_MODE_FSK_LDPC)
-        freedv = freedv_open(mode);
-    else {
+    if (mode == FREEDV_MODE_FSK_LDPC) {
         freedv = freedv_open_advanced(mode, &adv);
         struct FSK *fsk = freedv_get_fsk(freedv);
         fsk_set_freq_est_alg(fsk, mask);
+        
+        /* optionally set freq estimator limits */
+        if (!user_fsk_lower) fsk_lower = 0;
+        if (!user_fsk_upper) fsk_upper = adv.Fs/2;
+        fprintf(stderr,"Setting estimator limits to %d to %d Hz.\n", fsk_lower, fsk_upper);
+        fsk_set_freq_est_limits(fsk,fsk_lower,fsk_upper);
+    }
+    else {
+       freedv = freedv_open(mode);
     }
 
     assert(freedv != NULL);
     freedv_set_verbose(freedv, verbose);
     freedv_set_test_frames(freedv, use_testframes);
+    freedv_set_frames_per_burst(freedv, framesperburst);
+    
     if (mode == FREEDV_MODE_FSK_LDPC) {
         struct FSK *fsk = freedv_get_fsk(freedv);
-        fprintf(stderr, "Nbits: %d N: %d Ndft: %d\n", fsk->Nbits, fsk->N, fsk->Ndft);
+        if (!quiet) fprintf(stderr, "Nbits: %d N: %d Ndft: %d\n", fsk->Nbits, fsk->N, fsk->Ndft);
     }
 
     /* for streaming bytes it's much easier use the modes that have a multiple of 8 payload bits/frame */
     assert((freedv_get_bits_per_modem_frame(freedv) % 8) == 0);
     int bytes_per_modem_frame = freedv_get_bits_per_modem_frame(freedv)/8;
     // last two bytes used for CRC
-    fprintf(stderr, "payload bytes_per_modem_frame: %d\n", bytes_per_modem_frame - 2);
+    if (!quiet) fprintf(stderr, "payload bytes_per_modem_frame: %d\n", bytes_per_modem_frame - 2);
     uint8_t bytes_out[bytes_per_modem_frame];
     short  demod_in[freedv_get_n_max_modem_samples(freedv)];
+
+    signal(SIGINT, INThandler);
+    signal(SIGTERM, INThandler);
 
     /* We need to work out how many samples the demod needs on each
        call (nin).  This is used to adjust for differences in the tx
        and rx sample clock frequencies */
 
     nin = freedv_nin(freedv);
-    while(fread(demod_in, sizeof(short), nin, fin) == nin) {
+    while((fread(demod_in, sizeof(short), nin, fin) == nin) && !finish) {
         buf++;
 
         nbytes = freedv_rawdatarx(freedv, bytes_out, demod_in);
@@ -182,26 +266,29 @@ int main(int argc, char *argv[]) {
         if (nbytes) {
             // dont output CRC
             fwrite(bytes_out, sizeof(uint8_t), nbytes-2, fout);
+            
+            // log some stats
             nbytes_out += nbytes-2;
             nframes_out++;
-            if (resetsync && (nframes_out >= resetsync))
-                freedv_set_sync(freedv, FREEDV_SYNC_UNSYNC);
+            struct MODEM_STATS stats;
+            freedv_get_modem_extended_stats(freedv, &stats);
+            snr_sum += stats.snr_est;
+            if (foct) {
+                char name[64]; sprintf(name, "rx_symbols_%d", nframes_out);
+                octave_save_complex(foct, name, (COMP*) stats.rx_symbols, stats.nr, stats.Nc, MODEM_STATS_NC_MAX+1);
+            }
         }
-
-        if (verbose == 3) {
-            fprintf(stderr, "buf: %d nin: %d sync: %d nbytes: %d status: 0x%02x\n",
-                    buf, nin, freedv_get_sync(freedv), nbytes, freedv_get_rx_status(freedv));
-        }
-
-	      /* if using pipes we probably don't want the usual buffering */
+        
+	    /* if using pipes we probably don't want the usual buffering */
         if (fout == stdout) fflush(stdout);
-        if (fin == stdin) fflush(stdin);
     }
 
     fclose(fin);
     fclose(fout);
-    fprintf(stderr, "modem bufs processed: %d  output bytes: %d output_frames: %d \n", buf, nbytes_out, nframes_out);
-
+    fprintf(stderr, "modembufs: %6d bytes: %5d Frms.: %5d SNRAv: %5.2f\n", 
+            buf, nbytes_out, nframes_out, snr_sum/nframes_out);
+    int ret = 0;
+    
     /* in testframe mode finish up with some stats */
 
     if (freedv_get_test_frames(freedv)) {
@@ -213,13 +300,26 @@ int main(int argc, char *argv[]) {
         int Terrs_coded = freedv_get_total_bit_errors_coded(freedv);
         float coded_ber = (float)Terrs_coded/Tbits_coded;
         fprintf(stderr, "Coded BER: %5.4f Tbits: %5d Terrs: %5d\n", (double)coded_ber, Tbits_coded, Terrs_coded);
+        int Tpackets = freedv_get_total_packets(freedv);
+        int Tpacket_errors = freedv_get_total_packet_errors(freedv);
+        fprintf(stderr, "Coded FER: %5.4f Tfrms: %5d Tfers: %5d\n", (float)Tpacket_errors/Tpackets, Tpackets, Tpacket_errors);
+        
+        if (single_line_summary) {
+            struct MODEM_STATS stats;
+            freedv_get_modem_extended_stats(freedv, &stats);
+            fprintf(stderr, "FrmGd FrmDt Bytes SNRAv RawBER    Pre  Post UWfails\n");
+            fprintf(stderr, "%5d %5d %5d %5.2f %5.4f  %5d %5d   %5d\n", 
+                    nframes_out, Tpackets, nbytes_out, snr_sum/nframes_out, uncoded_ber, stats.pre, stats.post, stats.uw_fails);
+        }
+        
         /* set return code for Ctest */
         if ((uncoded_ber < 0.1f) && (coded_ber < 0.01f))
-            return 0;
+            ret = 0;
         else
-            return 1;
+            ret = 1;
     }
 
     freedv_close(freedv);
-    return 0;
+    if (foct) fclose(foct);
+    return ret;
 }

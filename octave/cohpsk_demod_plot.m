@@ -1,11 +1,11 @@
 % cohpsk_demod_plot.m
 % David Rowe May 2015
 %
-% Plot Octave outputs from cohpsk_demod, c2dec, to visualise whats going on
+% Plot Octave outputs from cohpsk_demod, c2dec, to visualise what's going on
 % when errors hit the system
 
 #{
-   $ ./cohpsk_get_test_bits - 5600 | ./cohpsk_mod - - | ./cohpsk_ch - - -40 | ./cohpsk_demod - - -o cohpsk_demod.txt | ./cohpsk_put_test_bits -
+   $ ./cohpsk_get_test_bits - 5600 | ./cohpsk_mod - - | ./ch - - --No -40 | ./cohpsk_demod - - -o cohpsk_demod.txt | ./cohpsk_put_test_bits -
    octave> cohpsk_demod_plot("../build_linux/src/cohpsk_demod.txt")
 #}
    

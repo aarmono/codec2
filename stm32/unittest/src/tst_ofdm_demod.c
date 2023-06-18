@@ -39,7 +39,7 @@
  * This program reads a file "stm_cfg.txt" at startup to configure its options.
  *
  * This program is intended to be run using input data, typically
- * Codec2 frames, which may have had simulated RF degredation applied.
+ * Codec2 frames, which may have had simulated RF degradation applied.
  * For example:
  *
  *    ofdm_get_test_bits - 10 | * ofdm_mod - - | \
@@ -239,13 +239,13 @@ int main(int argc, char *argv[]) {
 
         if (ofdm->sync_state == search) {
             if (config_profile) PROFILE_SAMPLE(ofdm_demod_sync_search);
-            ofdm_sync_search_shorts(ofdm, rx_scaled, (OFDM_AMP_SCALE/2));
+            ofdm_sync_search_shorts(ofdm, rx_scaled, (OFDM_PEAK/2));
             if (config_profile) PROFILE_SAMPLE_AND_LOG2(ofdm_demod_sync_search, "  ofdm_demod_sync_search");
         }
 
         if ((ofdm->sync_state == synced) || (ofdm->sync_state == trial) ) {
             if (config_profile) PROFILE_SAMPLE(ofdm_demod_demod);
-            ofdm_demod_shorts(ofdm, rx_bits, rx_scaled, (OFDM_AMP_SCALE/2));
+            ofdm_demod_shorts(ofdm, rx_bits, rx_scaled, (OFDM_PEAK/2));
             if (config_profile) PROFILE_SAMPLE_AND_LOG2(ofdm_demod_demod, "  ofdm_demod_demod");
             if (config_profile) PROFILE_SAMPLE(ofdm_demod_diss);
             ofdm_extract_uw(ofdm, ofdm->rx_np, ofdm->rx_amp, rx_uw);
@@ -255,8 +255,8 @@ int main(int argc, char *argv[]) {
 
             /* SNR estimation and smoothing */
             if (config_profile) PROFILE_SAMPLE(ofdm_demod_snr);
-            float snr_est_dB = 10*log10((ofdm->sig_var/ofdm->noise_var) * 
-                                ofdm_config->nc * ofdm_config->rs / 3000);
+            float EsNodB = ofdm_esno_est_calc((complex float*)payload_syms, coded_syms_per_frame);
+            float snr_est_dB = ofdm_snr_from_esno(ofdm, EsNodB);
             snr_est_smoothed_dB = 0.9f * snr_est_smoothed_dB + 0.1f  *snr_est_dB;
             if (config_profile) {
                 PROFILE_SAMPLE_AND_LOG2(ofdm_demod_snr, "  ofdm_demod_snr");
@@ -318,11 +318,17 @@ int main(int argc, char *argv[]) {
                 }
             } else {    // !llrs_en (or ldpc_en)
 
-                /* simple hard decision output for uncoded testing, all bits in frame dumped inlcuding UW and txt */
-                for(i=0; i<ofdm_bitsperframe; i++) {
-                    rx_bits_char[i] = rx_bits[i];
+                /* simple hard decision output for uncoded testing, excluding UW and txt */
+                assert(coded_syms_per_frame*ofdm_config->bps == coded_bits_per_frame);
+                for (i = 0; i < coded_syms_per_frame; i++) {
+                    int bits[2];
+                    complex float s = payload_syms[i].real + I * payload_syms[i].imag;
+                    qpsk_demod(s, bits);
+                    rx_bits_char[ofdm_config->bps * i] = bits[1];
+                    rx_bits_char[ofdm_config->bps * i + 1] = bits[0];
                 }
-                fwrite(rx_bits_char, sizeof(char), ofdm_bitsperframe, fout);
+
+                fwrite(rx_bits_char, sizeof (uint8_t), coded_bits_per_frame, fout);
             }
 
             /* optional error counting on uncoded data in non-LDPC testframe mode */
@@ -385,7 +391,7 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, " euw: %2d %1d f: %5.1f eraw: %3d ecdd: %3d iter: %3d pcc: %3d\n",
                 ofdm->uw_errors, ofdm->sync_counter,
                 (double)ofdm->foff_est_hz,
-                Nerrs_raw, Nerrs_coded, iter, parityCheckCount);
+                Nerrs, Nerrs_coded, iter, parityCheckCount);
         }
 
         if (config_log_payload_syms) {

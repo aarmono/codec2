@@ -49,10 +49,8 @@
   extern "C" {
 #endif
 
-// Experimentally derived fudge factors to normalise Tx power across modes
-#define NORM_PWR_COHPSK  1.12
-#define NORM_PWR_FSK     0.193
-#define NORM_PWR_OFDM    1.00
+// Fudge factors to normalise Tx power across modes
+#define NORM_PWR_FSK     0.5
 
 // identifiers for non Codec 2 Speech codecs, make sure no overlap with CODEC2_XXX modes
 #define CODEC_MODE_LPCNET_1733 100
@@ -76,7 +74,7 @@ struct freedv {
     struct FMFSK        *fmfsk;
     struct OFDM         *ofdm;
     struct LDPC         *ldpc;
-    struct MODEM_STATS   stats;
+    struct MODEM_STATS   stats;                 // working memory for when we call xxx_stats function for each demod
 #ifdef __LPCNET__
     struct LPCNetFreeDV *lpcnet;
 #endif
@@ -138,18 +136,19 @@ struct freedv {
     int                 *tx_bits;                            /* FSK modem frame under construction */
     int                  tx_sync_bit;
     int                  frames;
-    int                  clip_en;                            /* non-zero for modem Tx clipping to lower PAPR */
-    int                  sync;
+    bool                 clip_en;                            /* non-zero for modem Tx clipping to lower PAPR */
+    int                  sync;                               /* we set this when a mode is in sync */
     int                  evenframe;
-    float                snr_est;
+    float                snr_est;                            /* we set this each time the modes's demod estimates SNR */
     float                snr_squelch_thresh;
-    int                  squelch_en;
+    bool                 squelch_en;
     int                  nin, nin_prev;
     int                  verbose;
     int                  ext_vco;                            /* 2400A/800XA use external VCO flag */
     float               *passthrough_2020;                   /* 2020 interpolating filter */
     float                tx_amp;                             /* amplitude of tx samples */
-
+    float                passthrough_gain;
+    
     /* useful constants for OFDM modes ------------------------------------------------------------------*/
 
     int                  ofdm_bitsperpacket;
@@ -157,7 +156,7 @@ struct freedv {
     int                  ofdm_nuwbits;
     int                  ofdm_ntxtbits;
     int                  rx_status;
-
+    
     /* Varicode txt channel states ----------------------------------------------------------------------*/
 
     struct VARICODE_DEC  varicode_dec_states;
@@ -178,8 +177,10 @@ struct freedv {
 
     char (*freedv_get_next_tx_char)(void *callback_state);
     void (*freedv_put_next_rx_char)(void *callback_state, char c);
+    void (*freedv_put_next_rx_symbol)(void *callback_state, _Complex float sym, float amp);
     void                *callback_state;
-
+    void                *callback_state_sym;
+    
     /* user defined functions to produce and consume protocol bits */
     /* Protocol bits are packed MSB-first */
     void (*freedv_put_next_proto)(void *callback_state, char *proto_bits_packed);
@@ -203,7 +204,7 @@ struct freedv {
 void freedv_1600_open(struct freedv *f);
 void freedv_700c_open(struct freedv *f);
 void freedv_ofdm_voice_open(struct freedv *f, char *mode);
-void freedv_2020_open(struct freedv *f);
+void freedv_2020x_open(struct freedv *f);
 void freedv_2400a_open(struct freedv *f);
 void freedv_2400b_open(struct freedv *f);
 void freedv_800xa_open(struct freedv *f);
@@ -239,6 +240,10 @@ int freedv_bits_to_speech(struct freedv *f, short speech_out[], short demod_in[]
 void freedv_encrypt(struct freedv_crypto* c, uint8_t frame[], int bits_per_frame);
 void freedv_decrypt(struct freedv_crypto* c, uint8_t frame[], int bits_per_frame);
       
+// for the reliable text protocol we need to pass symbols back rather than text
+typedef void (*freedv_callback_rx_sym)(void *, _Complex float, float);
+void freedv_set_callback_txt_sym (struct freedv *freedv, freedv_callback_rx_sym rx, void *callback_state);
+
 #ifdef __cplusplus
 }
 #endif

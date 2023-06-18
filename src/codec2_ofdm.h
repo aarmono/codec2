@@ -62,6 +62,7 @@ struct OFDM;
 
 struct OFDM *ofdm_create(const struct OFDM_CONFIG * config);
 void ofdm_destroy(struct OFDM *);
+void ofdm_init_mode(char mode[], struct OFDM_CONFIG *config);
 
 /* signal processing */
 
@@ -82,7 +83,6 @@ int ofdm_get_samples_per_packet(struct OFDM *ofdm);
 int ofdm_get_max_samples_per_frame(struct OFDM *ofdm);
 int ofdm_get_bits_per_frame(struct OFDM *ofdm);
 int ofdm_get_bits_per_packet(struct OFDM *ofdm);
-void ofdm_get_demod_stats(struct OFDM *ofdm, struct MODEM_STATS *stats);
 int ofdm_get_phase_est_bandwidth_mode(struct OFDM *ofdm);
 
 /* option setters */
@@ -96,6 +96,7 @@ void ofdm_set_off_est_hz(struct OFDM *, float);
 void ofdm_set_sync(struct OFDM *, int);
 void ofdm_set_tx_bpf(struct OFDM *, bool);
 void ofdm_set_dpsk(struct OFDM *ofdm, bool val);
+void ofdm_set_packets_per_burst(struct OFDM *ofdm, int packetsperburst);
 
 void ofdm_print_info(struct OFDM *);
 

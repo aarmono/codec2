@@ -28,7 +28,7 @@
 
 void freedv_1600_open(struct freedv *f) {
     f->snr_squelch_thresh = 2.0;
-    f->squelch_en = 1;
+    f->squelch_en = true;
     f->tx_sync_bit = 0;
     int Nc = 16;
     f->fdmdv = fdmdv_create(Nc);
@@ -72,7 +72,7 @@ void freedv_comptx_fdmdv_1600(struct freedv *f, COMP mod_out[]) {
     data_flag_index = codec2_get_spare_bit_index(f->codec2);
 
     if (f->nvaricode_bits) {
-        f->fdmdv_tx_bits[data_flag_index] = f->tx_varicode_bits[f->varicode_bit_index++];
+        f->tx_payload_bits[data_flag_index] = f->tx_varicode_bits[f->varicode_bit_index++];
         f->nvaricode_bits--;
     }
 
@@ -81,14 +81,14 @@ void freedv_comptx_fdmdv_1600(struct freedv *f, COMP mod_out[]) {
         char s[2];
         if (f->freedv_get_next_tx_char != NULL) {
             s[0] = (*f->freedv_get_next_tx_char)(f->callback_state);
-            f->nvaricode_bits = varicode_encode(f->tx_varicode_bits, s, VARICODE_MAX_BITS, 1, 1);
+            f->nvaricode_bits = varicode_encode(f->tx_varicode_bits, s, VARICODE_MAX_BITS, 1, f->varicode_dec_states.code_num);
             f->varicode_bit_index = 0;
         }
     }
 
     /* Protect first 12 out of first 16 excitation bits with (23,12) Golay Code:
 
-       0,1,2,3: v[0]..v[1]
+       0,1,2,3: v[0]..v[3]
        4,5,6,7: MSB of pitch
        11,12,13,14: MSB of energy
 
@@ -245,7 +245,7 @@ int freedv_comprx_fdmdv_1600(struct freedv *f, COMP demod_in[]) {
             } /* if (test_frames == 0) .... */
         }
 
-        /* note this freewheels if reliable sync dissapears on bad channels */
+        /* note this freewheels if reliable sync disappears on bad channels */
 
         if (f->evenframe)
             f->evenframe = 0;

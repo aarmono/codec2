@@ -59,7 +59,7 @@ void hs_pitch_refinement(MODEL *model, COMP Sw[], float pmin, float pmax,
 C2CONST c2const_create(int Fs, float framelength_s) {
     C2CONST c2const;
 
-    assert((Fs == 8000) || (Fs = 16000));
+    assert((Fs == 8000) || (Fs == 16000));
     c2const.Fs = Fs;
     c2const.n_samp = round(Fs*framelength_s);
     c2const.max_amp = floor(Fs*P_MAX_S/2);
@@ -299,7 +299,7 @@ void dft_speech(codec2_fftr_cfg fftr_fwd_cfg, COMP Sw[], float Sn[], float w[])
 
 void two_stage_pitch_refinement(C2CONST *c2const, MODEL *model, COMP Sw[])
 {
-  float pmin,pmax,pstep;	/* pitch refinment minimum, maximum and step */
+  float pmin,pmax,pstep;	/* pitch refinement minimum, maximum and step */
 
   /* Coarse refinement */
 
@@ -372,11 +372,15 @@ void hs_pitch_refinement(MODEL *model, COMP Sw[], float pmin, float pmax, float 
   for(p=pmin; p<=pmax; p+=pstep) {
     E = 0.0;
     Wo = TWO_PI/p;
+    
+    float bFloat = Wo * one_on_r;
+    float currentBFloat = bFloat;
 
     /* Sum harmonic magnitudes */
     for(m=1; m<=model->L; m++) {
-        b = (int)(m*Wo*one_on_r + 0.5);
+        b = (int)(currentBFloat + 0.5);
         E += Sw[b].real*Sw[b].real + Sw[b].imag*Sw[b].imag;
+        currentBFloat += bFloat;
     }
     /* Compare to see if this is a maximum */
 
@@ -512,7 +516,7 @@ float est_voicing_mbe(
     /* post processing, helps clean up some voicing errors ------------------*/
 
     /*
-       Determine the ratio of low freqency to high frequency energy,
+       Determine the ratio of low frequency to high frequency energy,
        voiced speech tends to be dominated by low frequency energy,
        unvoiced by high frequency. This measure can be used to
        determine if we have made any gross errors.
@@ -564,7 +568,7 @@ float est_voicing_mbe(
   AUTHOR......: David Rowe
   DATE CREATED: 11/5/94
 
-  Init function that generates the trapezoidal (Parzen) sythesis window.
+  Init function that generates the trapezoidal (Parzen) synthesis window.
 
 \*---------------------------------------------------------------------------*/
 
@@ -600,7 +604,7 @@ void make_synthesis_window(C2CONST *c2const, float Pn[])
 
   Synthesise a speech signal in the frequency domain from the
   sinusodal model parameters.  Uses overlap-add with a trapezoidal
-  window to smoothly interpolate betwen frames.
+  window to smoothly interpolate between frames.
 
 \*---------------------------------------------------------------------------*/
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 #   Perform automated Eb/N0 testing of the C-implementation of fsk_mod / fsk_demod
 #
@@ -375,7 +375,7 @@ def process_fsk(
 
     _runtime = time.time() - _start
 
-    # Try to grab last line of the stderr outout
+    # Try to grab last line of the stderr output
     try:
         _last_line = _output.split("\n")[-3]
     except:
