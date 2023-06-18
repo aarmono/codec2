@@ -74,6 +74,10 @@ void freedv_comptx_700c(struct freedv *f, COMP mod_out[]) {
     COMP   tx_fdm[f->n_nat_modem_samples];
     int    tx_bits[COHPSK_BITS_PER_FRAME];
 
+    if(f->aes_module != NULL) {
+        freedv_encrypt_unpacked(f->aes_module, f->tx_payload_bits, f->bits_per_modem_frame);
+    }
+
     /* earlier modems used one bit per int for unpacked bits */
     for(i=0; i<COHPSK_BITS_PER_FRAME; i++) tx_bits[i] = f->tx_payload_bits[i];
 
@@ -250,6 +254,10 @@ void freedv_comptx_ofdm(struct freedv *f, COMP mod_out[]) {
         else txt_bits[k] = 0;
     }
 
+    if(f->aes_module != NULL) {
+        freedv_encrypt_unpacked(f->aes_module, f->tx_payload_bits, f->bits_per_modem_frame);
+    }
+
     /* optionally replace payload bits with test frames known to rx */
     if (f->test_frames) {
         uint8_t payload_data_bits[f->bits_per_modem_frame];
@@ -301,6 +309,9 @@ int freedv_comprx_700c(struct freedv *f, COMP demod_in_8kHz[]) {
     if (sync) {
         rx_status = FREEDV_RX_SYNC;
         if (f->test_frames == 0) {
+            if(f->aes_module != NULL) {
+                freedv_decrypt_unpacked(f->aes_module, f->rx_payload_bits, f->bits_per_modem_frame);
+            }
             rx_status |= FREEDV_RX_BITS;
         }
         else {
@@ -468,7 +479,9 @@ int freedv_comp_short_rx_ofdm(struct freedv *f, void *demod_in_8kHz, int demod_i
                 else
                     rx_status |= FREEDV_RX_BIT_ERRORS;
             } else {
-                
+                if(f->aes_module != NULL) {
+                    freedv_decrypt_unpacked(f->aes_module, f->rx_payload_bits, f->bits_per_modem_frame);
+                }
                 // voice modes aren't as strict - pass everything through to the speech decoder, but flag
                 // frame with possible errors
                 rx_status |= FREEDV_RX_BITS;

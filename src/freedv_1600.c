@@ -76,6 +76,10 @@ void freedv_comptx_fdmdv_1600(struct freedv *f, COMP mod_out[]) {
         f->nvaricode_bits--;
     }
 
+    if(f->aes_module != NULL) {
+        freedv_encrypt_unpacked(f->aes_module, f->tx_payload_bits, f->bits_per_codec_frame);
+    }
+
     if (f->nvaricode_bits == 0) {
         /* get new char and encode */
         char s[2];
@@ -197,6 +201,10 @@ int freedv_comprx_fdmdv_1600(struct freedv *f, COMP demod_in[]) {
                 }
                 for(i=8,j=11; i<12; i++,j++) {
                     f->rx_payload_bits[j] = (codeword1 >> (22-i)) & 0x1;
+                }
+
+                if(f->aes_module != NULL) {
+                    freedv_decrypt_unpacked(f->aes_module, f->rx_payload_bits, f->bits_per_codec_frame);
                 }
 
                 // extract txt msg data bit ------------------------------------------------------------
