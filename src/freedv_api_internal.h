@@ -238,7 +238,7 @@ int freedv_rx_fsk_ldpc_data(struct freedv *f, COMP demod_in[]);
 int freedv_bits_to_speech(struct freedv *f, short speech_out[], short demod_in[], int rx_status);
 
 void freedv_encrypt(struct freedv_crypto* c, uint8_t frame[], int bits_per_frame);
-void freedv_encyrpt_unpacked(struct freedv_crypto* c, uint8_t frame_bits[], int bits_per_frame);
+void freedv_encrypt_unpacked(struct freedv_crypto* c, uint8_t frame_bits[], int bits_per_frame);
 void freedv_decrypt(struct freedv_crypto* c, uint8_t frame[], int bits_per_frame);
 void freedv_decrypt_unpacked(struct freedv_crypto* c, uint8_t frame_bits[], int bits_per_frame);
       

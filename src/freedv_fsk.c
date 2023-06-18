@@ -666,7 +666,7 @@ int freedv_floatrx(struct freedv *f, short speech_out[], float demod_in[]) {
     return freedv_comprx(f, speech_out, rx_fdm);
 }
 
-void freedv_encyrpt_unpacked(struct freedv_crypto* c, uint8_t frame_bits[], int bits_per_frame)
+void freedv_encrypt_unpacked(struct freedv_crypto* c, uint8_t frame_bits[], int bits_per_frame)
 {
     int n_packed_bytes = (bits_per_frame + 7)/8;
     uint8_t frame[n_packed_bytes];
