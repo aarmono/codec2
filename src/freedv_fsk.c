@@ -216,7 +216,7 @@ void freedv_tx_fsk_voice(struct freedv *f, short mod_out[]) {
         }
 
         if (f->aes_module != NULL) {
-            freedv_encrypt(f->aes_module, f->tx_payload_bits, f->bits_per_modem_frame);
+            freedv_encrypt(f->aes_module, f->tx_payload_bits, f->bits_per_codec_frame);
         }
 
         /* If the API user hasn't set up message callbacks, don't bother with varicode bits */
@@ -230,6 +230,11 @@ void freedv_tx_fsk_voice(struct freedv *f, short mod_out[]) {
         }
     /* Frame for 800XA */
     }else if(FDV_MODE_ACTIVE( FREEDV_MODE_800XA, f->mode)){
+        if (f->aes_module != NULL) {
+            freedv_encrypt(f->aes_module, &f->tx_payload_bits[0], f->bits_per_codec_frame);
+            freedv_encrypt(f->aes_module, &f->tx_payload_bits[4], f->bits_per_codec_frame);
+        }
+
         fvhff_frame_bits(FREEDV_HF_FRAME_B,(uint8_t*)(f->tx_bits),f->tx_payload_bits,NULL,NULL);
     }
 
@@ -291,6 +296,10 @@ void freedv_comptx_fsk_voice(struct freedv *f, COMP mod_out[]) {
             }
         }
 
+        if (f->aes_module != NULL) {
+            freedv_encrypt(f->aes_module, f->tx_payload_bits, f->bits_per_codec_frame);
+        }
+
         /* If the API user hasn't set up message callbacks, don't bother with varicode bits */
         if(f->freedv_get_next_proto != NULL){
             (*f->freedv_get_next_proto)(f->proto_callback_state,(char*)proto_bits);
@@ -302,6 +311,11 @@ void freedv_comptx_fsk_voice(struct freedv *f, COMP mod_out[]) {
         }
     /* Frame for 800XA */
     }else if(FDV_MODE_ACTIVE( FREEDV_MODE_800XA, f->mode)){
+        if (f->aes_module != NULL) {
+            freedv_encrypt(f->aes_module, &f->tx_payload_bits[0], f->bits_per_codec_frame);
+            freedv_encrypt(f->aes_module, &f->tx_payload_bits[4], f->bits_per_codec_frame);
+        }
+
         fvhff_frame_bits(FREEDV_HF_FRAME_B,(uint8_t*)(f->tx_bits),f->tx_payload_bits,NULL,NULL);
     }
 
@@ -620,7 +634,13 @@ int freedv_comprx_fsk(struct freedv *f, COMP demod_in[]) {
         }
 
         if(f->aes_module != NULL) {
-            freedv_decrypt(f->aes_module, f->rx_payload_bits, f->bits_per_modem_frame);
+            if (FDV_MODE_ACTIVE( FREEDV_MODE_2400A, f->mode) || FDV_MODE_ACTIVE( FREEDV_MODE_2400B, f->mode)) {
+                freedv_decrypt(f->aes_module, f->rx_payload_bits, f->bits_per_codec_frame);
+            }
+            else if (FDV_MODE_ACTIVE( FREEDV_MODE_800XA, f->mode)) {
+                freedv_decrypt(f->aes_module, &f->rx_payload_bits[0], f->bits_per_codec_frame);
+                freedv_decrypt(f->aes_module, &f->rx_payload_bits[4], f->bits_per_codec_frame);
+            }
         }
         f->sync = 1;
     } else
@@ -644,6 +664,16 @@ int freedv_floatrx(struct freedv *f, short speech_out[], float demod_in[]) {
     }
 
     return freedv_comprx(f, speech_out, rx_fdm);
+}
+
+void freedv_encyrpt_unpacked(struct freedv_crypto* c, uint8_t frame_bits[], int bits_per_frame)
+{
+    int n_packed_bytes = (bits_per_frame + 7)/8;
+    uint8_t frame[n_packed_bytes];
+
+    freedv_pack(frame, frame_bits, bits_per_frame);
+    freedv_encrypt(c, frame, bits_per_frame);
+    freedv_unpack(frame_bits, frame, bits_per_frame);
 }
 
 void freedv_encrypt(struct freedv_crypto* c, uint8_t frame[], int bits_per_frame)
@@ -679,6 +709,16 @@ void freedv_encrypt(struct freedv_crypto* c, uint8_t frame[], int bits_per_frame
     /* Shift part of the ciphertext into the IV */
     memmove(c->tx_iv + iv_bytes_save, c->tx_iv, sizeof(c->tx_iv) - iv_bytes_save);
     memcpy(c->tx_iv, frame, iv_bytes_save);
+}
+
+void freedv_decrypt_unpacked(struct freedv_crypto* c, uint8_t frame_bits[], int bits_per_frame)
+{
+    int n_packed_bytes = (bits_per_frame + 7)/8;
+    uint8_t frame[n_packed_bytes];
+
+    freedv_pack(frame, frame_bits, bits_per_frame);
+    freedv_decrypt(c, frame, bits_per_frame);
+    freedv_unpack(frame_bits, frame, bits_per_frame);
 }
 
 void freedv_decrypt(struct freedv_crypto* c, uint8_t frame[], int bits_per_frame)
